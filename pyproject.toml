@@ -1,0 +1,42 @@
+[project]
+name = "xenoform-rs"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "virgesmith", email = "andrew@friarswood.net" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "itrx>=0.2.1",
+    "numpy>=2.4.3",
+    "pydantic-settings>=2.13.1",
+]
+
+[project.scripts]
+xenoform-rs = "xenoform_rs:main"
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.15.6",
+    "ty>=0.0.23",
+]
+examples = [
+    "pandas<3.0",
+]
+
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ARG", "B", "C", "D103", "E", "F", "I", "N", "PERF", "PTH", "RET", "RUF", "SIM", "UP", "W"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/test/*.py" = ["D103"]
