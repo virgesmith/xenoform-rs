@@ -8,18 +8,17 @@ import numpy as np
 from xenoform_rs.errors import RustTypeError
 
 DEFAULT_TYPE_MAPPING = {
-    None: "()",  # py::none?
+    None: "()",
     int: "i32",
     np.int32: "i32",
     np.int64: "i64",
     bool: "bool",
     float: "f64",
-    # complex: "std::complex<double>",
     np.float32: "f32",
     np.float64: "f64",
-    # complex: "std::complex<double>",
-    # np.complex64: "std::complex<float>",
-    # np.complex128: "std::complex<double>",
+    complex: "Bound<'py, PyComplex>",
+    # np.complex64: "PyComplex", single precision not supported
+    np.complex128: "Bound<'py, PyComplex>",
     np.ndarray: "PyReadonlyArrayDyn",
     str: "String",  # or "&'py str"?
     bytes: "&'py [u8]",  # or Vec<u8>?
@@ -68,7 +67,7 @@ class RustTypeTree:
     """Mapped tree structure for Rust types"""
 
     def __init__(self, tree: PyTypeTree, *, override: str | None = None) -> None:
-        self.type = DEFAULT_TYPE_MAPPING.get(tree.type)  # type: ignore[arg-type]
+        self.type = DEFAULT_TYPE_MAPPING.get(tree.type)
         if not self.type and not override:
             raise RustTypeError(f"Don't know a Rust type for '{tree.type}' and no override provided")
         self.override = override
