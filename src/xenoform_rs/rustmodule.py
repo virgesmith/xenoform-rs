@@ -25,7 +25,7 @@ pyo3 = {{ version = "{pyo3_version}", features = ["extension-module", "abi3-py31
 
 _MODULE_TEMPLATE = """
 #![allow(non_upper_case_globals)]
-#[pyo3::pymodule]
+#[pyo3::pymodule{freethreaded}]
 mod {module_name} {{
 use pyo3::prelude::*;
     {use_statements}
@@ -118,6 +118,7 @@ class ModuleSpec:
         code = _MODULE_TEMPLATE.format(
             version=version,
             module_name=module_name,
+            freethreaded="(gil_used = true)" if get_config().disable_ft else "(gil_used = false)",
             use_statements="\n".join(f"use {u};" for u in self.uses),
             function_definitions=function_defs,
         )
