@@ -63,8 +63,8 @@ def main() -> None:
     rng = np.random.default_rng(19937)
     rate = 0.001
 
-    print("N | py (ms) | cpp (ms) | speedup (%)")
-    print("-:|--------:|---------:|-----------:")
+    print("N | py (ms) | rust (ms) | speedup (%)")
+    print("-:|--------:|----------:|-----------:")
     for n in [1000, 10000, 100000, 1000000, 10000000]:
         data = pd.Series(index=range(n), data=rng.integers(-100, 101, size=n), name="cashflow")
 

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Annotated, Any
 
 import pytest
@@ -86,14 +87,14 @@ def test_signature_translation2() -> None:
         ["a", "*", "c=true"],
     )
 
-    # TODO
-    # def f10(a: tuple[int, tuple[int, float]], *, value: Callable[[int, float], bool]) -> bool:
-    #     ""
+    def f10(a: tuple[int, tuple[int, float]], *, value: Callable[[int, float], bool]) -> bool:  # ty:ignore[empty-body]
+        ""
 
-    # assert translate_function_signature(f10) == (
-    #     "[](std::tuple<int, std::tuple<int, double>> a, std::function<bool(int, double)> value) -> PyResult<bool>",
-    #     ['py::arg("a")', "py::kw_only()", 'py::arg("value")'],
-    # )
+    # TODO optional types dont work inside tuple: Option<...> gets changed to Option(...)
+    assert translate_function_signature(f10, py=True) == (
+        "(py: Python<'py>, a: (i32, (i32, f64)), value: Bound<'py, PyCFunction>) -> PyResult<bool>",
+        ["a", "*", "value"],
+    )
 
 
 @rust(py=False)
@@ -149,4 +150,4 @@ def test_compile_error() -> None:
 
 
 if __name__ == "__main__":
-    test_signature_translation1()
+    test_signature_translation2()

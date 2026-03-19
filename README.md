@@ -7,11 +7,18 @@ complete than its C++ sister.
 - [X] positional and keyword arguments and markers
 - [X] *args/**kwargs
 - [X] type overrides via `Annotated`
-- [ ] callable types
+- [X] callable types (partial). See below.
 - [ ] free-threaded execution
 - [ ] auto-vectorisation
 - [ ] link to external libs
 - [ ] ~~compound types~~ (rust doesn't support this)
+
+
+Notes:
+
+- callable types:
+    - typed functions/closures are not supported.
+    - default type mapping (`Callable` -> `Bound<'py, PyCFunction>`) works for return values but doesn't allow for python functions/lambdas to be passed into rust. In this case override to `Bound<'py, PyAny>` (`PyAnyMethods` implement the call... traits).
 
 
 ## Performance
@@ -65,7 +72,7 @@ def calc_balances_rust(
     """
 ```
 
-N | py (ms) | cpp (ms) | speedup (%)
+N | py (ms) | rust (ms) | speedup (%)
 -:|--------:|---------:|-----------:
 1000 | 0.3 | 1.3 | -79
 10000 | 1.1 | 0.1 | 867

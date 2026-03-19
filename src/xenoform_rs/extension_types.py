@@ -28,13 +28,13 @@ DEFAULT_TYPE_MAPPING = {
     set: "HashSet",
     frozenset: "HashSet",
     dict: "HashMap",
-    # tuple: "std::tuple",  # ... ellipsis not supported here
+    tuple: "tuple_placeholder",  # this gets replaced with rust's tuple syntax ... ellipsis not supported here
     # slice: "py::slice",
     Any: "Bound<'py, PyAny>",
     Self: "Bound<'py, PyAny>",
     type: "Bound<'py, PyType>",
     UnionType: "Option",
-    # Callable: "std::function",
+    Callable: "Bound<'py, PyCFunction>",  # override function arguments to Bound<'py, PyAny> to pass python functions/lambdas to rust
     # EllipsisType: "py::ellipsis",
 }
 
@@ -74,19 +74,15 @@ class RustTypeTree:
         self.override = override
         if tree.type == np.ndarray:
             self.subtypes: tuple[RustTypeTree, ...] = (RustTypeTree(tree.subtypes[1].subtypes[0]),)
+        elif tree.type == Callable:
+            # pyo3 doesn't support typing callable objects
+            self.subtypes: tuple[RustTypeTree, ...] = ()
         else:
             self.subtypes = tuple(RustTypeTree(t) for t in tree.subtypes if t.type is not NoneType)
-        # if we have a "T | None" -> std::variant with one fewer type param, make it a std::optional
-        if self.type == "Option" and len(self.subtypes) == len(tree.subtypes) - 1:
-            if len(self.subtypes) > 1:
-                # T | U | None -> std::optional<std::variant<T, U>>
-                # subtype = copy(self)
-                # subtype.override = None
-                # self.subtypes = (subtype,)
-                raise TypeError(
-                    "variant types are not currently supported, use '&Bound<'_, PyAny>' as an override rust type"
-                )
-            self.type = "Option"
+        if self.type == "Option" and len(self.subtypes) == len(tree.subtypes) - 1 and len(self.subtypes) > 1:
+            raise TypeError(
+                "variant types are not currently supported, use '&Bound<'_, PyAny>' as an override rust type"
+            )
 
     def __repr__(self) -> str:
         if self.override:

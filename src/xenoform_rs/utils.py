@@ -78,6 +78,8 @@ def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple
             if var_name in defaults:
                 # arg_def += f"={_translate_value(defaults[var_name])}"
                 arg_annotation += f"={_translate_value(defaults[var_name])}"
+            if "tuple_placeholder" in arg_def:
+                arg_def = arg_def.replace("tuple_placeholder", "").replace("<", "(").replace(">", ")")
             arg_defs.append(arg_def)
             # dont create an annotation for var(kw)args
             # if arg_spec.varargs != var_name and arg_spec.varkw != var_name:
