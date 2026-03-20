@@ -1,5 +1,6 @@
-from xenoform_rs.utils import rust_dependency
 import pytest
+
+from xenoform_rs.utils import rust_dependency
 
 
 def test_rust_dependency() -> None:
