@@ -1,6 +1,6 @@
 # dummy generic types for references and pointers
 from collections.abc import Callable
-from types import NoneType, UnionType
+from types import EllipsisType, NoneType, UnionType
 from typing import Annotated, Any, Self, get_args, get_origin
 
 import numpy as np
@@ -34,7 +34,7 @@ DEFAULT_TYPE_MAPPING = {
     type: "Bound<'py, PyType>",
     UnionType: "Option",
     Callable: "Bound<'py, PyCFunction>",  # override function arguments to Bound<'py, PyAny> to pass python functions/lambdas to rust
-    # EllipsisType: "py::ellipsis",
+    EllipsisType: "Bound<'py, PyEllipsis>",
 }
 
 
