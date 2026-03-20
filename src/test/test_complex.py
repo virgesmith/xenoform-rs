@@ -3,7 +3,7 @@ from math import exp, pi
 import numpy as np
 import pytest
 
-from xenoform_rs import rust
+from xenoform_rs import rust, rust_dependency
 
 # @rust()
 # def complex_float_func(z: np.complex64) -> np.complex64:
@@ -12,7 +12,7 @@ from xenoform_rs import rust
 #     """
 
 
-@rust(dependencies=['num = "*"'], imports=["pyo3::types::PyComplex", "num::complex::Complex"])
+@rust(dependencies=[rust_dependency("num", "*")], imports=["pyo3::types::PyComplex", "num::complex::Complex"])
 def complex_double_func(z: complex) -> complex:  # type: ignore[empty-body]
     """
     let z = Complex::<f64>::new(z.real(), z.imag());

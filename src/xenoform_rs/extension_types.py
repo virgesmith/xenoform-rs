@@ -67,7 +67,7 @@ class RustTypeTree:
     """Mapped tree structure for Rust types"""
 
     def __init__(self, tree: PyTypeTree, *, override: str | None = None) -> None:
-        self.type = DEFAULT_TYPE_MAPPING.get(tree.type)
+        self.type = DEFAULT_TYPE_MAPPING.get(tree.type)  # type: ignore[arg-type]
         if not self.type and not override:
             raise RustTypeError(f"Don't know a Rust type for '{tree.type}' and no override provided")
         self.override = override

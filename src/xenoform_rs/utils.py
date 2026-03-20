@@ -110,12 +110,16 @@ def _translate_value(value: Any) -> str:
     return translations.get(str(value), str(value))
 
 
-def rust_dependency(name: str, **kwargs: Any) -> str:
+def rust_dependency(*args: str, **kwargs: Any) -> str:
     """Make a valid dependency entry for Cargo.toml"""
 
-    params = []
-    for k, v in kwargs.items():
-        params.append(f'{k} = "{v}"' if isinstance(v, str) else f"{k} = {v}")
-    if params:
-        return f"{name} = {{ {', '.join(params)} }}"
-    return f"{name}"
+    match len(args), len(kwargs):
+        case 2, 0:
+            return f'{args[0]} = "{args[1]}"'
+        case 1, n if n > 0:
+            params = []
+            for k, v in kwargs.items():
+                params.append(f'{k} = "{v}"' if isinstance(v, str) else f"{k} = {v}")
+            return f"{args[0]} = {{ {', '.join(params)} }}"
+        case _:
+            raise ValueError("rust_dependency requires a name and either a version string or a keyword parameters")
