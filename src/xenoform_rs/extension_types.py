@@ -28,7 +28,7 @@ DEFAULT_TYPE_MAPPING = {
     frozenset: "HashSet",
     dict: "HashMap",
     tuple: "tuple_placeholder",  # this gets replaced with rust's tuple syntax ... ellipsis not supported here
-    # slice: "py::slice",
+    slice: "Bound<'py, PySlice>",
     Any: "Bound<'py, PyAny>",
     Self: "Bound<'py, PyAny>",
     type: "Bound<'py, PyType>",

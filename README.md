@@ -19,6 +19,7 @@ Notes:
 - callable types:
     - typed functions/closures are not supported.
     - default type mapping (`Callable` -> `Bound<'py, PyCFunction>`) works for return values but doesn't allow for python functions/lambdas to be passed into rust. In this case override to `Bound<'py, PyAny>` (`PyAnyMethods` implement the call... traits).
+- complex: 128 bit support only (i.e. not `np.complex64`)
 
 ## Performance
 
