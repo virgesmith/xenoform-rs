@@ -7,6 +7,7 @@ import sys
 from collections import defaultdict
 from collections.abc import Callable
 from functools import cache, lru_cache, wraps
+from importlib.machinery import ExtensionFileLoader
 from pathlib import Path
 from types import ModuleType
 from typing import Literal, ParamSpec, TypeVar
@@ -17,6 +18,7 @@ from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import get_function_scope, translate_function_signature
 
 logger = logging.getLogger(__name__)
+
 
 Platform = Literal["Linux", "Darwin", "Windows"]
 Platforms = list[Platform] | None
@@ -57,7 +59,9 @@ def _get_cargo_env() -> dict[str, str]:
 _CHECKSUM_SCRIPT = """
 import sys
 import importlib.util
-spec = importlib.util.spec_from_file_location("{module_name}", "{module_path}")
+from importlib.machinery import ExtensionFileLoader
+loader = ExtensionFileLoader(module_name, str(lib_path))
+spec = importlib.util.spec_from_loader(module_name, loader)
 module = importlib.util.module_from_spec(spec)
 sys.modules["{module_name}"] = module
 spec.loader.exec_module(module)
@@ -188,7 +192,8 @@ def _check_build_fetch_module_impl(
         )
 
     # Load the shared library as a Python module
-    spec = importlib.util.spec_from_file_location(module_name, lib_path)
+    loader = ExtensionFileLoader(module_name, str(lib_path))
+    spec = importlib.util.spec_from_loader(module_name, loader)
     if spec is None:
         raise XenoformRsError(f"Could not create module spec for {lib_path}")
 
