@@ -263,6 +263,10 @@ def rust(
 
         arg_defs = ", ".join(args)
 
+        # overwrite the python stub's docstr...
+        if help:
+            func.__doc__ = help
+
         # ...as well as adding the help to the ext module
         function_spec = FunctionSpec(
             name=func.__name__,  # ty:ignore[unresolved-attribute]

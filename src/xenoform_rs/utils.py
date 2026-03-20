@@ -1,5 +1,6 @@
 import inspect
 import logging
+import re
 import subprocess
 from collections import defaultdict
 from collections.abc import Callable
@@ -31,10 +32,14 @@ def _splitargs(signature: str) -> tuple[str, ...]:
 
 def get_function_scope(func: Callable[..., Any]) -> tuple[str, ...]:
     """
-    Returns the name of the class for class and instance methods
+    Returns the snake-case name of the class for class and instance methods
     NB Does not work for static methods
     """
-    return tuple(s for s in func.__qualname__.split(".")[:-1] if s != "<locals>")  # ty:ignore[unresolved-attribute]
+    return tuple(
+        re.sub(r"(?<!^)(?=[A-Z])", "_", s).lower()
+        for s in func.__qualname__.split(".")[:-1]  # ty:ignore[unresolved-attribute]
+        if s != "<locals>"
+    )
 
 
 def _translate_value(value: Any) -> str:
@@ -63,6 +68,7 @@ def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple
     ret: str | None = None
     for var_name, type_ in arg_spec.annotations.items():
         rusttype = translate_type(type_)
+        # can't use self to refer to a python object in rust
         if var_name == "return":
             ret = str(rusttype)
         else:

@@ -22,7 +22,7 @@ DEFAULT_TYPE_MAPPING = {
     np.ndarray: "PyReadonlyArrayDyn",
     str: "String",  # or "&'py str"?
     bytes: "&'py [u8]",  # or Vec<u8>?
-    bytearray: "Vec<u8>",
+    bytearray: "Bound<'py, PyByteArray>",  # default type allows in-place modification
     list: "Vec",
     set: "HashSet",
     frozenset: "HashSet",

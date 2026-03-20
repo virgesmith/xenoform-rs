@@ -1,6 +1,9 @@
 from dataclasses import dataclass, field
 from hashlib import sha256
+from operator import add
 from typing import Self
+
+from itrx import Itr
 
 from xenoform_rs import __version__ as version
 from xenoform_rs.config import get_config
@@ -42,11 +45,16 @@ use pyo3::prelude::*;
 
 
 _FUNCTION_DEFINITION_TEMPLATE = """
+{help}
 #[pyfunction]
 #[pyo3 (signature=({arg_defs}))]
 fn {function_name}<'py>{function_body}
 
 """
+
+
+def _format_help(help: str | None) -> str:
+    return Itr((help or "").split("\n")).map(lambda line: f"/// {line}").intersperse("\n").reduce(add)
 
 
 @dataclass(frozen=True)
@@ -108,7 +116,7 @@ class ModuleSpec:
                     # lifetime="<'py>" if f.lifetime else "",
                     function_body=f.body,
                     arg_defs=f.arg_annotations,
-                    help=f', R"""({f.help})"""' if f.help else "",
+                    help=_format_help(f.help),
                 )
                 for f in self.functions
             )
