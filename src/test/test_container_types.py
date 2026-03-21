@@ -39,7 +39,6 @@ def test_dict() -> None:
 @rust(py=False)
 def tuple_sum(t4: tuple[int, int, int, int]) -> int:  # type: ignore[empty-body]
     """
-    // summing a C++ tuple is not straightforward
     Ok(t4.0 + t4.1 + t4.2 + t4.3)
     """
 

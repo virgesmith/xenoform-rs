@@ -1,7 +1,21 @@
 # xenoform-rs
 
-**[Work-in-progress]** A rust-flavoured version of [xenoform](https://pypi.org/project/xenoform/), which will likely be functionally less
-complete than its C++ sister.
+Write and execute superfast *rust* inside your Python code! Here's how...
+
+Write a type-annotated function or method definition **in python**, add the `rust` decorator and put the **rust
+implementation** in a docstr:
+
+```py
+from xenoform_rs import rust
+
+@rust(py=False)
+def vector_sum(v: list[int]) -> int:  # ty: ignore[empty-body]
+    """
+    Ok(v.iter().sum())
+    """
+```
+
+It's a work-in-progress and will likely never be as functionally complete than its C++ sister, [xenoform](https://pypi.org/project/xenoform/):
 
 - [X] `numpy` array support
 - [X] positional and keyword arguments and markers
@@ -9,9 +23,9 @@ complete than its C++ sister.
 - [X] type overrides via `Annotated`
 - [X] callable types (partial). See below.
 - [X] free-threaded execution
-- [ ] auto-vectorisation
 - [ ] link to external libs
-- [ ] ~~compound types~~ (rust doesn't support this)
+- [ ] ~~auto-vectorisation~~ (not supported)
+- [ ] ~~compound types~~ (rust doesn't support this, use `PyAny`)
 
 
 Notes:
@@ -24,6 +38,12 @@ Notes:
 ## Performance
 
 See [the (C++) xenoform version](https://github.com/virgesmith/xenoform/blob/main/README.md#performance) for context.
+
+Requires the examples dependency group (and [rust](https://rust-lang.org/tools/install/), of course):
+
+```sh
+uv sync --group examples
+```
 
 ### Loop
 
@@ -80,7 +100,9 @@ N | py (ms) | rust (ms) | speedup (%)
 1000000 | 115.1 | 6.0 | 1832
 10000000 | 1134.6 | 43.8 | 2488
 
-For reference, the xenoform implementation is twice as fast.
+For reference, this is about half as fast as the equivalent xenoform implementation.
+
+Full code is in [examples/loop.py](examples/loop.py).
 
 ### Distance Matrix
 
@@ -135,4 +157,6 @@ N | py (ms) | rust (ms) | speedup (%)
 3000 | 204.8 | 19.1 | 972%
 10000 | 2794.9 | 209.8 | 1232%
 
-For reference, this is  *five times faster* than the xenoform implementation with openmp optimisations!
+For reference, this is *five times faster* than the xenoform implementation, which has openmp optimisations!
+
+Full code is in [examples/distance_matrix.py](examples/distance_matrix.py).

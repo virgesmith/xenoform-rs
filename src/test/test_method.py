@@ -76,7 +76,7 @@ def test_method() -> None:
 def test_method_incorrect_usage() -> None:
     with pytest.raises(TypeError):
         ClassA.method()  # type: ignore[call-arg]
-    # C++ impl should raise same error type as python
+    # rust impl should raise same error type as python
     with pytest.raises(TypeError):
         ClassB.method()  # type: ignore[call-arg]
 

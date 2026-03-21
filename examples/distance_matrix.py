@@ -1,4 +1,4 @@
-"""Example of custom vectorised function performance - python vs inline C++"""
+"""Example of custom vectorised function performance - python vs inline rust"""
 
 import time
 from typing import Annotated

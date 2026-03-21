@@ -9,7 +9,7 @@ from xenoform_rs import rust
 @rust(imports=["pyo3::types::{PyCFunction, PyDict, PyTuple}", "pyo3::exceptions::PyTypeError"])
 def round_sign() -> Callable[[float, bool], int]:  # type:ignore[empty-body]
     """
-    // in C++: return [](double x, bool s) -> int { return int(s ? -x : x); };
+    // c.f. C++: return [](double x, bool s) -> int { return int(s ? -x : x); };
 
     let closure = PyCFunction::new_closure(py, None, None,
             move |args: &Bound<'_, PyTuple>, kwargs: Option<&Bound<'_, PyDict>>| -> PyResult<i32> {

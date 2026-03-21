@@ -1,4 +1,4 @@
-"""Example of unvectorisable function performance - python vs inline C++"""
+"""Example of unvectorisable function performance - python vs inline rust"""
 
 from time import process_time
 from typing import Annotated
