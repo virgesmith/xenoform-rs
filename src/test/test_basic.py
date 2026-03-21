@@ -90,10 +90,18 @@ def test_signature_translation2() -> None:
     def f10(a: tuple[int, tuple[int, float]], *, value: Callable[[int, float], bool]) -> bool:  # ty:ignore[empty-body]
         ""
 
-    # TODO optional types dont work inside tuple: Option<...> gets changed to Option(...)
     assert translate_function_signature(f10, py=True) == (
         "(py: Python<'py>, a: (i32, (i32, f64)), value: Bound<'py, PyCFunction>) -> PyResult<bool>",
         ["a", "*", "value"],
+    )
+
+    # optional types inside tuple are tricky
+    def f11(a: tuple[tuple[int, bool | None], float | None]) -> None:
+        ""
+
+    assert translate_function_signature(f11, py=False) == (
+        "(a: ((i32, Option<bool>), Option<f64>)) -> PyResult<()>",
+        ["a"],
     )
 
 
@@ -117,7 +125,7 @@ def passref(b: bytes) -> int:  # ty: ignore[empty-body]
 
 def test_ref() -> None:
     b = b"sjksjdlk"
-    passref(b)  # i is immutable, incref gets a ref to a copy
+    passref(b)
 
 
 @rust(py=False, imports=["pyo3::exceptions::PyRuntimeError"])

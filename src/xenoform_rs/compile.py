@@ -10,7 +10,7 @@ from functools import cache, lru_cache, wraps
 from importlib.machinery import ExtensionFileLoader
 from pathlib import Path
 from types import ModuleType
-from typing import Literal, ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar
 
 from xenoform_rs.config import get_config
 from xenoform_rs.errors import AnnotationError, CompilationError, XenoformRsError
@@ -19,9 +19,6 @@ from xenoform_rs.utils import get_function_scope, translate_function_signature
 
 logger = logging.getLogger(__name__)
 
-
-Platform = Literal["Linux", "Darwin", "Windows"]
-Platforms = list[Platform] | None
 
 extmodule_root = get_config().extmodule_root
 
@@ -116,7 +113,6 @@ def _check_build_fetch_module_impl(
     lib_path = _get_lib_path(module_dir, module_name)
 
     # if a built module already exists, and matches the hash of the source code, just use it
-    # TODO this doesnt currently work
     module_checksum = _get_module_checksum(lib_path, module_name)
 
     # assume exists and up-to-date
@@ -223,7 +219,7 @@ def _get_function(module_name: str, function_name: str) -> Callable[P, R]:
 
 def rust(
     *,
-    py: bool = True,  # TODO
+    py: bool = True,
     dependencies: list[str] | None = None,
     imports: list[str] | None = None,
     module_name: str | None = None,

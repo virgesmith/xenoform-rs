@@ -85,7 +85,7 @@ def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple
                 # arg_def += f"={_translate_value(defaults[var_name])}"
                 arg_annotation += f"={_translate_value(defaults[var_name])}"
             if "tuple_placeholder" in arg_def:
-                arg_def = arg_def.replace("tuple_placeholder", "").replace("<", "(").replace(">", ")")
+                arg_def = _replace_tuple_angle_brackets(arg_def)
             arg_defs.append(arg_def)
             # dont create an annotation for var(kw)args
             # if arg_spec.varargs != var_name and arg_spec.varkw != var_name:
@@ -129,3 +129,36 @@ def rust_dependency(*args: str, **kwargs: Any) -> str:
             return f"{args[0]} = {{ {', '.join(params)} }}"
         case _:
             raise ValueError("rust_dependency requires a name and either a version string or a keyword parameters")
+
+
+def _replace_tuple_angle_brackets(arg_def: str) -> str:
+
+    arg_def = arg_def.replace("tuple_placeholder", "")
+    i = 0
+    result = []
+    option_depth = 0  # how many Option<...> levels we're inside
+
+    while i < len(arg_def):
+        # Check if we're at the start of "Option<"
+        if arg_def[i : i + 7] == "Option<":
+            result.append("Option<")
+            i += 6
+            option_depth += 1
+
+        elif arg_def[i] == "<":
+            result.append("<" if option_depth > 0 else "(")
+            # i += 1
+
+        elif arg_def[i] == ">":
+            if option_depth > 0:
+                option_depth -= 1
+                result.append(">")
+            else:
+                result.append(")")
+            # i += 1
+
+        else:
+            result.append(arg_def[i])
+        i += 1
+
+    return "".join(result)
