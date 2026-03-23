@@ -47,12 +47,25 @@ uv sync --group examples
 
 ### Loop
 
+Rust vs python comparison of a non-vectorisable operation on a `pd.Series`:
+
 ```py
+def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
+    """Cannot vectorise, since each value is dependent on the previous value"""
+    result = pd.Series(index=data.index)
+    result_a = result.to_numpy()
+    current_value = 0.0
+    for i, value in data.items():
+        current_value = (current_value + value) * (1 - rate)
+        result_a[i] = current_value  # ty:ignore[invalid-assignment]
+    return result
+
+
 @rust(
-    extra_deps=['numpy = { version = "0.28" }'],
-    extra_uses=[
-        "use numpy::{PyArray1, PyArrayMethods};",
-        "use pyo3::types::{PyDict, PyAnyMethods};",
+    dependencies=[rust_dependency("numpy", version="0.28")],
+    imports=[
+        "numpy::{PyArray1, PyArrayMethods}",
+        "pyo3::types::{PyDict, PyAnyMethods}",
     ],
     module_name="loop_rs",  # override as "loop" is a rust keyword
 )
@@ -106,10 +119,17 @@ Full code is in [examples/loop.py](examples/loop.py).
 
 ### Distance Matrix
 
+Rust vs python comparison of a vectorised operation on a `np.array`:
+
 ```py
+def calc_dist_matrix_py(p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    "Compute distance matrix from points, using numpy"
+    return np.sqrt(((p[:, np.newaxis, :] - p[np.newaxis, :, :]) ** 2).sum(axis=2))
+
+
 @rust(
-    extra_deps=['numpy = { version = "0.28" }'],
-    extra_uses=["use numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2};"],
+    dependencies=[rust_dependency("numpy", version="0.28")],
+    imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"],
 )
 def calc_dist_matrix_rust(
     points: Annotated[npt.NDArray[np.float64], "PyReadonlyArray2<f64>"],

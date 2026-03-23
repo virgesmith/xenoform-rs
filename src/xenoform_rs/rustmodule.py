@@ -54,7 +54,9 @@ fn {function_name}<'py>{function_body}
 
 
 def _format_help(help: str | None) -> str:
-    return Itr((help or "").split("\n")).map(lambda line: f"/// {line}").intersperse("\n").reduce(add)
+    if not help:
+        return ""
+    return Itr((help).split("\n")).map(lambda line: f"/// {line}").intersperse("\n").reduce(add)
 
 
 @dataclass(frozen=True)
