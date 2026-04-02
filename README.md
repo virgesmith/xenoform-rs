@@ -41,13 +41,13 @@ Simply decorate your rust-implemented functions with the `rust` decorator factor
 
 kwarg | type(=default) | description
 ----- | -------------- | -----------
-`py` | `bool=True` | Pass the python context as the first argument.
+`py` | `bool = True` | Pass the python context as the first argument.
 `dependencies` | `list[str] \| None = None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.28")]`.
 `imports` | `list[str] \| None = None` | Additional imports, e.g. `imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"]`
 `_extra_compile_args` | `list[str] \| None = None` | Extra arguments to pass to the compiler. Currently unimplemented.
 `_extra_link_args` | `list[str] \| None = None` | Extra arguments to pass to the linker. Currently unimplemented.
 `edition` | `str = "2024"` | The rust edition.
-`help` | `str \| None=None` | Docstring for the function
+`help` | `str \| None = None` | Docstring for the function
 `verbose` | `bool=False` | enable debug logging
 
 ## Performance
@@ -121,7 +121,7 @@ def calc_balances_rust(
 ```
 
 N | py (ms) | rust (ms) | speedup (%)
-: | -------:|----------:|-----------:
+-:| -------:|----------:|-----------:
 1000 | 0.3 | 1.3 | -79
 10000 | 1.1 | 0.1 | 867
 100000 | 12.5 | 1.1 | 1085
@@ -184,7 +184,7 @@ def calc_dist_matrix_rust(
 ```
 
 N | py (ms) | rust (ms) | speedup (%)
-: |--------:|----------:|-----------:
+-:|--------:|----------:|-----------:
 100 | 0.7 | 1.5 | -54%
 300 | 3.4 | 0.1 | 2838%
 1000 | 30.2 | 1.3 | 2246%
