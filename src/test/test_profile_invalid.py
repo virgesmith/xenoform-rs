@@ -3,10 +3,10 @@ import pytest
 from xenoform_rs import RustConfigError, rust
 
 
-def test_edition_invalid() -> None:
+def test_profile_invalid() -> None:
     with pytest.raises(RustConfigError):
 
-        @rust(edition="2204")
+        @rust(py=False, profile={"opt-level": "4"})
         def f(i: int) -> bool:  # type: ignore[empty-body]
             "return i % 2;"
 
@@ -14,4 +14,4 @@ def test_edition_invalid() -> None:
 
 
 if __name__ == "__main__":
-    test_edition_invalid()
+    test_profile_invalid()

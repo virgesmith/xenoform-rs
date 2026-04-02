@@ -13,7 +13,7 @@ from types import ModuleType
 from typing import ParamSpec, TypeVar
 
 from xenoform_rs.config import get_config
-from xenoform_rs.errors import AnnotationError, CompilationError, XenoformRsError
+from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError, XenoformRsError
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import get_function_scope, translate_function_signature
 
@@ -169,7 +169,7 @@ def _check_build_fetch_module_impl(
                     f"Cargo build failed for module '{ext_name}' with return code {compile_result.returncode}. See {build_log} for details."
                 )
         except subprocess.CalledProcessError as e:
-            raise XenoformRsError(
+            raise RustConfigError(
                 f"Cargo build command error while building '{ext_name}'. See {build_log} for details."
             ) from e
 
@@ -187,8 +187,8 @@ def _check_build_fetch_module_impl(
             f"Check cargo output for build errors or different naming conventions."
         )
 
-    # Load the shared library as a Python module
-    loader = ExtensionFileLoader(module_name, str(lib_path))
+    # Load the shared library as a Python module (Windows needs an absolute path here)
+    loader = ExtensionFileLoader(module_name, str(lib_path.resolve()))
     spec = importlib.util.spec_from_loader(module_name, loader)
     if spec is None:
         raise XenoformRsError(f"Could not create module spec for {lib_path}")
@@ -223,9 +223,8 @@ def rust(
     dependencies: list[str] | None = None,
     imports: list[str] | None = None,
     module_name: str | None = None,
-    _extra_compile_args: list[str] | None = None,
-    _extra_link_args: list[str] | None = None,
-    edition: str = "2021",
+    profile: dict[str, str] | None = None,
+    edition: str | None = None,
     help: str | None = None,
     verbose: bool = False,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -244,11 +243,6 @@ def rust(
 
     else:
         logging.basicConfig(level=logging.WARNING)
-
-    if _extra_compile_args or _extra_link_args:
-        logger.warning(
-            "The '_extra_compile_args' and '_extra_link_args' parameters are not currently supported and will be ignored."
-        )
 
     def register_function(func: Callable[P, R]) -> Callable[P, R]:
         """Decorator to compile a Python function to Rust and replace it with the compiled version."""
@@ -289,6 +283,7 @@ def rust(
             deps=dependencies or [],
             uses=imports or [],
             edition=edition,
+            profile=profile or {},
         )
 
         @wraps(func)

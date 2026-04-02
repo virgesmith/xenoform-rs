@@ -17,6 +17,7 @@ def calc_dist_matrix_py(p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
 @rust(
     dependencies=[rust_dependency("numpy", version="0.28")],
     imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"],
+    profile={"strip": "symbols"},
 )
 def calc_dist_matrix_rust(
     points: Annotated[npt.NDArray[np.float64], "PyReadonlyArray2<f64>"],

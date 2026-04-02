@@ -7,6 +7,7 @@ from itrx import Itr
 
 from xenoform_rs import __version__ as version
 from xenoform_rs.config import get_config
+from xenoform_rs.errors import RustConfigError
 from xenoform_rs.utils import rustfmt
 
 _CARGO_TEMPLATE = """
@@ -14,11 +15,13 @@ _CARGO_TEMPLATE = """
 
 [package]
 name = "{module_name}"
-version = "0.1.0"
 edition = "{edition}"
 
 [lib]
 crate-type = ["cdylib"]
+
+[profile.release]
+{profile_overrides}
 
 [dependencies]
 {dependencies}
@@ -78,6 +81,14 @@ class FunctionSpec:
         return f"_{self.name}"
 
 
+def _append_profile(existing: dict[str, str], new: dict[str, str]) -> dict[str, str]:
+    common_keys = existing.keys() & new.keys()
+    for k in common_keys:
+        if existing[k] != new[k]:
+            raise RustConfigError(f"Conflicting profile values for {k}: {existing[k]} vs {new[k]}")
+    return existing | new
+
+
 @dataclass
 class ModuleSpec:
     """
@@ -87,6 +98,7 @@ class ModuleSpec:
     functions: set[FunctionSpec] = field(default_factory=set[FunctionSpec])
     deps: set[str] = field(default_factory=set[str])
     uses: set[str] = field(default_factory=set[str])
+    profile: dict[str, str] = field(default_factory=dict[str, str])
     edition: str | None = None  # will default to "2024"
 
     def add_function(
@@ -95,11 +107,13 @@ class ModuleSpec:
         *,
         deps: list[str] | None = None,
         uses: list[str] | None = None,
+        profile: dict[str, str] | None = None,
         edition: str | None = None,
     ) -> Self:
         self.functions.add(function)
         self.deps |= set(deps or [])
         self.uses |= set(uses or [])
+        self.profile = _append_profile(self.profile, profile or {})
         if edition and self.edition and edition != self.edition:
             raise ValueError(f"Incompatible edition values: {edition} when {self.edition} has already been set")
         self.edition = edition or self.edition
@@ -113,6 +127,7 @@ class ModuleSpec:
             pyo3_version=get_config().pyo3_version,
             module_name=module_name,
             edition=self.edition or "2024",  # only default at the point when Cargo.toml is generated
+            profile_overrides="\n".join(f'{k} = "{v}"' for k, v in self.profile.items()),
             dependencies="\n".join(self.deps),
         )
 
