@@ -35,6 +35,21 @@ Notes:
     - default type mapping (`Callable` -> `Bound<'py, PyCFunction>`) works for return values but doesn't allow for python functions/lambdas to be passed into rust. In this case override to `Bound<'py, PyAny>` (`PyAnyMethods` implement the call... traits).
 - complex: 128 bit support only (i.e. not `np.complex64`)
 
+## Usage
+
+Simply decorate your rust-implemented functions with the `rust` decorator factory - it handles all the configuration and compilation. It can be customised with these optional parameters:
+
+kwarg | type(=default) | description
+----- | -------------- | -----------
+`py` | `bool=True` | Pass the python context as the first argument.
+`dependencies` | `list[str] \| None = None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.28")]`.
+`imports` | `list[str] \| None = None` | Additional imports, e.g. `imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"]`
+`_extra_compile_args` | `list[str] \| None = None` | Extra arguments to pass to the compiler. Currently unimplemented.
+`_extra_link_args` | `list[str] \| None = None` | Extra arguments to pass to the linker. Currently unimplemented.
+`edition` | `str = "2024"` | The rust edition.
+`help` | `str \| None=None` | Docstring for the function
+`verbose` | `bool=False` | enable debug logging
+
 ## Performance
 
 See [the (C++) xenoform version](https://github.com/virgesmith/xenoform/blob/main/README.md#performance) for context.
@@ -42,7 +57,7 @@ See [the (C++) xenoform version](https://github.com/virgesmith/xenoform/blob/mai
 Requires the examples dependency group (and [rust](https://rust-lang.org/tools/install/), of course):
 
 ```sh
-uv sync --group examples
+uv sync --extra examples
 ```
 
 ### Loop
@@ -106,7 +121,7 @@ def calc_balances_rust(
 ```
 
 N | py (ms) | rust (ms) | speedup (%)
--:|--------:|---------:|-----------:
+: | -------:|----------:|-----------:
 1000 | 0.3 | 1.3 | -79
 10000 | 1.1 | 0.1 | 867
 100000 | 12.5 | 1.1 | 1085
@@ -168,9 +183,8 @@ def calc_dist_matrix_rust(
     """
 ```
 
-
 N | py (ms) | rust (ms) | speedup (%)
--:|--------:|----------:|-----------:
+: |--------:|----------:|-----------:
 100 | 0.7 | 1.5 | -54%
 300 | 3.4 | 0.1 | 2838%
 1000 | 30.2 | 1.3 | 2246%

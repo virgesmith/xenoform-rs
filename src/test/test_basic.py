@@ -116,7 +116,7 @@ def test_basic() -> None:
     assert max(2, 3) == 3
 
 
-@rust(py=False)
+@rust(py=False, _extra_compile_args=["-C", "opt-level=3"])
 def passref(b: bytes) -> int:  # ty: ignore[empty-body]
     """
     Ok(b.len() as i32)
@@ -158,4 +158,5 @@ def test_compile_error() -> None:
 
 
 if __name__ == "__main__":
-    test_signature_translation2()
+    # test_signature_translation2()
+    test_ref()

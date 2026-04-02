@@ -416,22 +416,26 @@ dependencies = [
     { name = "pydantic-settings" },
 ]
 
+[package.optional-dependencies]
+examples = [
+    { name = "pandas" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "ty" },
 ]
-examples = [
-    { name = "pandas" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "itrx", specifier = ">=0.2.1" },
     { name = "numpy", specifier = ">=2.4.3" },
+    { name = "pandas", marker = "extra == 'examples'", specifier = "<3.0" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },
 ]
+provides-extras = ["examples"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -439,4 +443,3 @@ dev = [
     { name = "ruff", specifier = ">=0.15.6" },
     { name = "ty", specifier = ">=0.0.23" },
 ]
-examples = [{ name = "pandas", specifier = "<3.0" }]

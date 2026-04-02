@@ -4,7 +4,7 @@ from importlib import metadata
 __version__ = metadata.version("xenoform-rs")
 
 from .compile import rust
-from .errors import AnnotationError, CompilationError, RustTypeError
+from .errors import AnnotationError, CompilationError, RustTypeError, XenoformRsError
 from .utils import rust_dependency
 
 
@@ -21,4 +21,12 @@ def _check_rust_installed() -> None:
 _check_rust_installed()
 
 
-__all__ = ["AnnotationError", "CompilationError", "RustTypeError", "__version__", "rust", "rust_dependency"]
+__all__ = [
+    "AnnotationError",
+    "CompilationError",
+    "RustTypeError",
+    "XenoformRsError",
+    "__version__",
+    "rust",
+    "rust_dependency",
+]

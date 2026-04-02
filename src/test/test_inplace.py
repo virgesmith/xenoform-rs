@@ -39,7 +39,7 @@ def modify_bytearray(b: bytearray) -> None:
     if b.len() > 0 {
         unsafe {
             let raw = b.as_bytes_mut();
-            raw[0] = 5;
+            raw[0] += 5;
         }
     }
     Ok(())
@@ -59,10 +59,10 @@ def test_inplace_modification() -> None:
     modify_set(st)
     assert st == {0, 1}
 
-    b = bytearray([0, 1, 2, 3])
+    b = bytearray(b"abcd")
     modify_bytearray(b)
-    assert b[0] == 5
-    assert b[1] == 1
+    assert b[0] == ord("f")
+    assert b[1] == ord("b")
 
 
 if __name__ == "__main__":

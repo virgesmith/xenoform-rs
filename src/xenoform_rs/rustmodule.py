@@ -15,7 +15,7 @@ _CARGO_TEMPLATE = """
 [package]
 name = "{module_name}"
 version = "0.1.0"
-edition = "2021"
+edition = "{edition}"
 
 [lib]
 crate-type = ["cdylib"]
@@ -87,6 +87,7 @@ class ModuleSpec:
     functions: set[FunctionSpec] = field(default_factory=set[FunctionSpec])
     deps: set[str] = field(default_factory=set[str])
     uses: set[str] = field(default_factory=set[str])
+    edition: str | None = None  # will default to "2024"
 
     def add_function(
         self,
@@ -94,10 +95,14 @@ class ModuleSpec:
         *,
         deps: list[str] | None = None,
         uses: list[str] | None = None,
+        edition: str | None = None,
     ) -> Self:
         self.functions.add(function)
         self.deps |= set(deps or [])
         self.uses |= set(uses or [])
+        if edition and self.edition and edition != self.edition:
+            raise ValueError(f"Incompatible edition values: {edition} when {self.edition} has already been set")
+        self.edition = edition or self.edition
         return self
 
     def make_source(self, module_name: str) -> tuple[str, str, str]:
@@ -107,6 +112,7 @@ class ModuleSpec:
             version=version,
             pyo3_version=get_config().pyo3_version,
             module_name=module_name,
+            edition=self.edition or "2024",  # only default at the point when Cargo.toml is generated
             dependencies="\n".join(self.deps),
         )
 

@@ -225,6 +225,7 @@ def rust(
     module_name: str | None = None,
     _extra_compile_args: list[str] | None = None,
     _extra_link_args: list[str] | None = None,
+    edition: str = "2021",
     help: str | None = None,
     verbose: bool = False,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -243,6 +244,11 @@ def rust(
 
     else:
         logging.basicConfig(level=logging.WARNING)
+
+    if _extra_compile_args or _extra_link_args:
+        logger.warning(
+            "The '_extra_compile_args' and '_extra_link_args' parameters are not currently supported and will be ignored."
+        )
 
     def register_function(func: Callable[P, R]) -> Callable[P, R]:
         """Decorator to compile a Python function to Rust and replace it with the compiled version."""
@@ -282,6 +288,7 @@ def rust(
             function_spec,
             deps=dependencies or [],
             uses=imports or [],
+            edition=edition,
         )
 
         @wraps(func)
