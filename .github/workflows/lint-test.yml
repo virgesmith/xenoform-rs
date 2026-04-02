@@ -24,7 +24,7 @@ jobs:
     - name: Install Rust
       run: rustup toolchain install stable
     - name: Build
-      run: uv sync --dev --all-groups
+      run: uv sync --dev --all-extras
     - name: Lint
       run: |
         uv run ruff check
