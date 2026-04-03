@@ -21,7 +21,7 @@ and the source for an extension module is generated. The first time any function
 Subsequent calls to the function incur minimal overhead, as the attribute corresponding to the (dummy) python function
 now points to the rust implementation.
 
-Each module stores a hash its source code (and Cargo.toml). Modules are checked on load and
+Each module stores a hash of its source code (and Cargo.toml). Modules are checked on load and
 automatically rebuilt when any changes are detected.
 
 By default, the binaries, source code and build logs for the compiled modules can be found in the `ext` subfolder (this location can be changed).
@@ -56,7 +56,7 @@ kwarg | type(=default) | description
 `py` | `bool = True` | Pass the python context as the first argument. Necessary when (e.g.) creating python objects.
 `dependencies` | `list[str] \| None = None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.28")]`.
 `imports` | `list[str] \| None = None` | Additional imports, e.g. `imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"]`
-`modules` | list[Path \| str] \| None = None | Sources for additional modules
+`modules` | `list[Path \| str] \| None = None` | Sources for additional modules
 `edition` | `str = "2024"` | The rust edition.
 `profile` | `dict[str, str] \| None = None` | Overrides to (release mode) [profile](https://doc.rust-lang.org/cargo/reference/profiles.html), e.g. optimisation level, strip symbols, etc.
 `help` | `str \| None = None` | Docstring for the function
@@ -66,7 +66,7 @@ kwarg | type(=default) | description
 
 See [the (C++) xenoform version](https://github.com/virgesmith/xenoform/blob/main/README.md#performance) for context.
 
-Requires the examples dependency group (and [rust](https://rust-lang.org/tools/install/), of course):
+Requires the "examples" optional dependency (and [rust](https://rust-lang.org/tools/install/), of course):
 
 ```sh
 uv sync --extra examples
