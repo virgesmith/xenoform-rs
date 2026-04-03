@@ -111,11 +111,6 @@ def rustfmt(code: str) -> str:
     return result.stdout
 
 
-def _translate_value(value: Any) -> str:
-    translations = {"False": "false", "True": "true"}
-    return translations.get(str(value), str(value))
-
-
 def rust_dependency(*args: str, **kwargs: Any) -> str:
     """Make a valid dependency entry for Cargo.toml"""
 

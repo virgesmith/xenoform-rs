@@ -124,7 +124,6 @@ class ModuleSpec:
         if edition and self.edition and edition != self.edition:
             raise ValueError(f"Incompatible edition values: {edition} when {self.edition} has already been set")
         self.edition = edition or self.edition
-        self.modules |= set(modules or [])
         return self
 
     def make_source(self, module_name: str) -> tuple[str, str, str]:
@@ -164,7 +163,7 @@ class ModuleSpec:
 
         code = rustfmt(code)
 
-        hash = sha256(module.encode() + code.encode())
+        hash = sha256(module.encode("utf-8") + code.encode("utf-8"))
         for m in self.modules:
             hash.update(m.read_bytes())
 

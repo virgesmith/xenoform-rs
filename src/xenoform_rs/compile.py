@@ -185,12 +185,6 @@ def _check_build_fetch_module_impl(
             f"Check cargo output for build errors or different naming conventions."
         )
 
-    if not lib_path.exists():
-        raise XenoformRsError(
-            f"Compiled library not found at expected path: {lib_path}\n"
-            f"Check cargo output for build errors or different naming conventions."
-        )
-
     # Load the shared library as a Python module (Windows needs an absolute path here)
     loader = ExtensionFileLoader(module_name, str(lib_path.resolve()))
     spec = importlib.util.spec_from_loader(module_name, loader)
@@ -241,7 +235,6 @@ def rust(
     """
 
     if verbose:
-        # logger.setLevel(logging.INFO) doesnt do anything
         logging.basicConfig(
             format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s", level=logging.INFO, datefmt="%H:%M:%S"
         )
