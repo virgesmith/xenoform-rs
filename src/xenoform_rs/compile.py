@@ -42,6 +42,13 @@ def _get_lib_path(module_dir: Path, module_name: str) -> Path:
 
 
 def _get_cargo_env() -> dict[str, str]:
+    # TODO is this actually necessary?
+    # Environment variables for linking, especially for macOS.
+    # - `undefined dynamic_lookup` is crucial for PyO3 on macOS when building `cdylib`.
+    # - `rpath $ORIGIN` (Linux) helps the loader find dependent libraries if any, relative to the executable.
+    #   (Though less critical for single shared lib, good practice).
+    # Note: For Windows, this might not be needed or might need different flags.
+    # Best to run with default first and add if issues.
     cargo_env = os.environ.copy()
     match sys.platform:
         case "darwin":
@@ -57,8 +64,8 @@ _CHECKSUM_SCRIPT = """
 import sys
 import importlib.util
 from importlib.machinery import ExtensionFileLoader
-loader = ExtensionFileLoader(module_name, str(lib_path))
-spec = importlib.util.spec_from_loader(module_name, loader)
+loader = ExtensionFileLoader("{module_name}", "{module_path}")
+spec = importlib.util.spec_from_loader("{module_name}", loader)
 module = importlib.util.module_from_spec(spec)
 sys.modules["{module_name}"] = module
 spec.loader.exec_module(module)
@@ -135,8 +142,12 @@ def _check_build_fetch_module_impl(
         with (src_dir / "lib.rs").open("w") as fd:
             # can't use format as its full of { }
             fd.write(code.replace("__HASH__", str(hashval)))
-
         logger.info(f"wrote {module_dir}/lib.rs")
+
+        for file in module_spec.modules:
+            dest = src_dir / file.name
+            dest.write_bytes(file.read_bytes())
+            logger.info(f"copied {file} to {dest}")
 
         # Write Cargo.toml
         with (module_dir / "Cargo.toml").open("w") as f:
@@ -145,13 +156,6 @@ def _check_build_fetch_module_impl(
         logger.info(f"wrote {module_dir}/Cargo.toml")
         logger.info(f"building {extmodule_root.name}.{ext_name}.{module_name}...")
         try:
-            # Environment variables for linking, especially for macOS.
-            # - `undefined dynamic_lookup` is crucial for PyO3 on macOS when building `cdylib`.
-            # - `rpath $ORIGIN` (Linux) helps the loader find dependent libraries if any, relative to the executable.
-            #   (Though less critical for single shared lib, good practice).
-            # Note: For Windows, this might not be needed or might need different flags.
-            # Best to run with default first and add if issues.
-
             build_log = module_dir / "build.log"
 
             with build_log.open("w") as fd:
@@ -221,6 +225,7 @@ def rust(
     *,
     py: bool = True,
     dependencies: list[str] | None = None,
+    modules: list[str | Path] | None = None,
     imports: list[str] | None = None,
     module_name: str | None = None,
     profile: dict[str, str] | None = None,
@@ -284,6 +289,7 @@ def rust(
             uses=imports or [],
             edition=edition,
             profile=profile or {},
+            modules=[Path(m) for m in modules or []],
         )
 
         @wraps(func)

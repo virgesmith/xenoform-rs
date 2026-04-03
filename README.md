@@ -15,6 +15,17 @@ def vector_sum(v: list[int]) -> int:  # ty: ignore[empty-body]
     """
 ```
 
+When Python loads this file, all functions using this decorator have their function signatures are translated to rust
+and the source for an extension module is generated. The first time any function is called, the module is built, the attribute corresponding to the (empty) Python function is replaced with the rust implementation in the module.
+
+Subsequent calls to the function incur minimal overhead, as the attribute corresponding to the (dummy) python function
+now points to the rust implementation.
+
+Each module stores a hash its source code (and Cargo.toml). Modules are checked on load and
+automatically rebuilt when any changes are detected.
+
+By default, the binaries, source code and build logs for the compiled modules can be found in the `ext` subfolder (this location can be changed).
+
 It's a work-in-progress and will likely never be as functionally complete than its C++ sister, [xenoform](https://pypi.org/project/xenoform/):
 
 - [X] `numpy` array support
@@ -23,6 +34,7 @@ It's a work-in-progress and will likely never be as functionally complete than i
 - [X] type overrides via `Annotated`
 - [X] callable types (partial). See below.
 - [X] free-threaded execution
+- [X] call in-crate modules
 - [ ] link to external libs
 - [ ] ~~auto-vectorisation~~ (not supported)
 - [ ] ~~compound types~~ (rust doesn't support this, use `PyAny`)
@@ -33,6 +45,7 @@ Notes:
     - typed functions/closures are not supported.
     - default type mapping (`Callable` -> `Bound<'py, PyCFunction>`) works for return values but doesn't allow for python functions/lambdas to be passed into rust. In this case override to `Bound<'py, PyAny>` (`PyAnyMethods` implement the call... traits).
 - complex: 128 bit support only (i.e. not `np.complex64`)
+- if additional modules are specified, the files are copied into the crate
 
 ## Usage
 
@@ -43,6 +56,7 @@ kwarg | type(=default) | description
 `py` | `bool = True` | Pass the python context as the first argument. Necessary when (e.g.) creating python objects.
 `dependencies` | `list[str] \| None = None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.28")]`.
 `imports` | `list[str] \| None = None` | Additional imports, e.g. `imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"]`
+`modules` | list[Path \| str] \| None = None | Sources for additional modules
 `edition` | `str = "2024"` | The rust edition.
 `profile` | `dict[str, str] \| None = None` | Overrides to (release mode) [profile](https://doc.rust-lang.org/cargo/reference/profiles.html), e.g. optimisation level, strip symbols, etc.
 `help` | `str \| None = None` | Docstring for the function
