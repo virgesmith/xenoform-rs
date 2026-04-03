@@ -15,7 +15,7 @@ def vector_sum(v: list[int]) -> int:  # ty: ignore[empty-body]
     """
 ```
 
-When Python loads this file, all functions using this decorator have their function signatures are translated to rust
+When Python loads this file, all functions using this decorator have their function signatures translated to rust
 and the source for an extension module is generated. The first time any function is called, the module is built, the attribute corresponding to the (empty) Python function is replaced with the rust implementation in the module.
 
 Subsequent calls to the function incur minimal overhead, as the attribute corresponding to the (dummy) python function
