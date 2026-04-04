@@ -13,7 +13,7 @@ from types import ModuleType
 from typing import ParamSpec, TypeVar
 
 from xenoform_rs.config import get_config
-from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError, XenoformRsError
+from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import get_function_scope, translate_function_signature
 
@@ -38,11 +38,10 @@ def _get_lib_path(module_dir: Path, module_name: str) -> Path:
             # Windows library names don't typically start with 'lib' prefix
             return module_dir / "target/release" / f"{module_name}.dll"
         case _:
-            raise XenoformRsError(f"Unsupported platform: {sys.platform}")
+            raise RustConfigError(f"Unsupported platform: {sys.platform}")
 
 
 def _get_cargo_env() -> dict[str, str]:
-    # TODO is this actually necessary?
     # Environment variables for linking, especially for macOS.
     # - `undefined dynamic_lookup` is crucial for PyO3 on macOS when building `cdylib`.
     # - `rpath $ORIGIN` (Linux) helps the loader find dependent libraries if any, relative to the executable.
@@ -166,7 +165,7 @@ def _check_build_fetch_module_impl(
                     stdout=fd,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    env=_get_cargo_env(),
+                    # env=_get_cargo_env(),
                 )
             if compile_result.returncode != 0:
                 raise CompilationError(
@@ -180,7 +179,7 @@ def _check_build_fetch_module_impl(
         logger.info(f"built {extmodule_root.name}.{ext_name}.{module_name}")
 
     if not lib_path.exists():
-        raise XenoformRsError(
+        raise RustConfigError(
             f"Compiled library not found at expected path: {lib_path}\n"
             f"Check cargo output for build errors or different naming conventions."
         )
@@ -189,7 +188,7 @@ def _check_build_fetch_module_impl(
     loader = ExtensionFileLoader(module_name, str(lib_path.resolve()))
     spec = importlib.util.spec_from_loader(module_name, loader)
     if spec is None:
-        raise XenoformRsError(f"Could not create module spec for {lib_path}")
+        raise RustConfigError(f"Could not create module spec for {lib_path}")
 
     module = importlib.util.module_from_spec(spec)
     # It's crucial to add the module to sys.modules BEFORE executing its spec.

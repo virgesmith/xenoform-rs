@@ -1,7 +1,6 @@
 from xenoform_rs import rust
 
 
-# TODO make the arg an Iterable?
 @rust(py=False)
 def vector_sum(v: list[int]) -> int:  # ty: ignore[empty-body]
     """

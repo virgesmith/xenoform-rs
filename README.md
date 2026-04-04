@@ -60,7 +60,7 @@ kwarg | type(=default) | description
 `edition` | `str = "2024"` | The rust edition.
 `profile` | `dict[str, str] \| None = None` | Overrides to (release mode) [profile](https://doc.rust-lang.org/cargo/reference/profiles.html), e.g. optimisation level, strip symbols, etc.
 `help` | `str \| None = None` | Docstring for the function
-`verbose` | `bool=False` | enable debug logging
+`verbose` | `bool = False` | enable debug logging
 
 ## Performance
 
