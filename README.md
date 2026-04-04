@@ -104,25 +104,26 @@ def calc_balances_rust(
 
 ```rs
     // extract numpy arrays from the series. Note input is i64, output is f64
-    let data_np = data.call_method0("to_numpy")?;
-    let data_a: &Bound<'py, PyArray1<i64>> = data_np.cast()?;
-    let a = unsafe { data_a.as_array() };
-    let n = a.len();
+    let data_obj = data.call_method0("to_numpy")?;
+    let data_np: &Bound<'py, PyArray1<i64>> = data_obj.cast()?;
+    let n = data_np.len()? as usize;
 
-    let mut r = vec![0.0; n];
-    let mut current_value = 0.0;
+    // use the pattern from the numpy documentation
+    let result_np = unsafe {
+        let r = PyArray1::<f64>::zeros(py, [n], false);
+        let mut current_value = 0.0;
 
-    for i in 0..n {
-        current_value = (current_value + a[i] as f64) * (1.0 - rate);
-        r[i] = current_value;
-    }
+        for i in 0..n {
+            current_value = (current_value + *data_np.uget([i]) as f64) * (1.0 - rate);
+            *r.uget_mut([i]) = current_value;
+        }
+        r
+    };
 
     // Construct a pd.Series with the same index as the input
-    let result_np = PyArray1::from_slice(py, &r);
+    let pd = py.import("pandas")?;
     let kwargs = PyDict::new(py);
     kwargs.set_item("index", data.getattr("index")?)?;
-
-    let pd = py.import("pandas")?;
     let result = pd.getattr("Series")?.call((result_np,), Some(&kwargs))?;
 
     Ok(result)
@@ -134,13 +135,13 @@ def calc_balances_rust(
 
 N | py (ms) | rust (ms) | speedup (%)
 -:| -------:|----------:|-----------:
-1000 | 0.3 | 1.3 | -79
-10000 | 1.1 | 0.1 | 867
-100000 | 12.5 | 1.1 | 1085
-1000000 | 115.1 | 6.0 | 1832
-10000000 | 1134.6 | 43.8 | 2488
+1000 | 0.6 | 1.9 | -68
+10000 | 1.5 | 0.1 | 1410
+100000 | 28.8 | 1.0 | 2775
+1000000 | 136.4 | 3.0 | 4496
+10000000 | 1248.0 | 25.5 | 4791
 
-For reference, this is about half as fast as the equivalent xenoform implementation.
+For reference, this is at least as fast as the equivalent xenoform implementation.
 
 Full code is in [examples/loop.py](examples/loop.py).
 

@@ -12,11 +12,11 @@ from xenoform_rs import rust, rust_dependency
 def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
     """Cannot vectorise, since each value is dependent on the previous value"""
     result = pd.Series(index=data.index)
-    result_a = result.to_numpy()
+    result_np = result.to_numpy()
     current_value = 0.0
     for i, value in data.items():
         current_value = (current_value + value) * (1 - rate)
-        result_a[i] = current_value  # ty:ignore[invalid-assignment]
+        result_np[i] = current_value  # ty:ignore[invalid-assignment]
     return result
 
 
@@ -34,25 +34,26 @@ def calc_balances_rust(
 ) -> Annotated[pd.Series, "Bound<'py, PyAny>"]:  # ty: ignore[empty-body]
     """
     // extract numpy arrays from the series. Note input is i64, output is f64
-    let data_np = data.call_method0("to_numpy")?;
-    let data_a: &Bound<'py, PyArray1<i64>> = data_np.cast()?;
-    let a = unsafe { data_a.as_array() };
-    let n = a.len();
+    let data_obj = data.call_method0("to_numpy")?;
+    let data_np: &Bound<'py, PyArray1<i64>> = data_obj.cast()?;
+    let n = data_np.len()? as usize;
 
-    let mut r = vec![0.0; n];
-    let mut current_value = 0.0;
+    // use the pattern from the numpy documentation
+    let result_np = unsafe {
+        let r = PyArray1::<f64>::zeros(py, [n], false);
+        let mut current_value = 0.0;
 
-    for i in 0..n {
-        current_value = (current_value + a[i] as f64) * (1.0 - rate);
-        r[i] = current_value;
-    }
+        for i in 0..n {
+            current_value = (current_value + *data_np.uget([i]) as f64) * (1.0 - rate);
+            *r.uget_mut([i]) = current_value;
+        }
+        r
+    };
 
     // Construct a pd.Series with the same index as the input
-    let result_np = PyArray1::from_slice(py, &r);
+    let pd = py.import("pandas")?;
     let kwargs = PyDict::new(py);
     kwargs.set_item("index", data.getattr("index")?)?;
-
-    let pd = py.import("pandas")?;
     let result = pd.getattr("Series")?.call((result_np,), Some(&kwargs))?;
 
     Ok(result)
