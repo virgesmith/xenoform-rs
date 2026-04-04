@@ -1,12 +1,14 @@
 from types import EllipsisType
 from typing import Annotated
 
+import numpy as np
+import numpy.typing as npt
 import pytest
 
-from xenoform_rs import rust
+from xenoform_rs import rust, rust_dependency
 
 
-@rust(imports=["pyo3::types::PySlice"])
+@rust(py=False, imports=["pyo3::types::PySlice"])
 def parse_slice(length: int, s: slice) -> list[int]:  # type: ignore[empty-body]
     """
     let idx = s.indices(length as isize)?;
@@ -21,22 +23,32 @@ def parse_slice(length: int, s: slice) -> list[int]:  # type: ignore[empty-body]
     """
 
 
-# this is likely to be far more tricky in rust...
-# @rust()
-# def slice_shape(a: npt.NDArray[np.float64], *indices: int | slice | EllipsisType) -> list[int]:
-#     """
-#     py::array slice = a[indices];
-#     return std::vector<int>(slice.shape(), slice.shape() + slice.ndim());
-#     """
-
-
 @rust(
+    py=False,
+    dependencies=[rust_dependency("numpy", version="0.28")],
     imports=[
-        "pyo3::types::{PyInt, PyEllipsis, PyString}",
-        "pyo3::exceptions::PyTypeError",
-        "pyo3::type_object::PyTypeInfo",
-    ]
+        "numpy::{PyArrayDyn, PyUntypedArrayMethods}",
+        "pyo3::types::PyTuple",
+    ],
 )
+def slice_shape(
+    a: Annotated[npt.NDArray[np.float64], "Bound<'py, PyArrayDyn<f64>>"],
+    *indices: Annotated[int | slice | EllipsisType, "Bound<'py, PyAny>"],
+) -> list[int]:  # ty: ignore[empty-body]
+    """
+    // `indices` arrives as a PyTuple containing the variadic arguments
+    let sliced = a.get_item(indices)?;
+    let sliced_array = sliced.cast::<PyArrayDyn<f64>>()?;
+    let shape = sliced_array.shape();
+    let mut result = Vec::with_capacity(shape.len());
+    for &dim in shape.iter() {
+        result.push(dim as i32);
+    }
+    Ok(result)
+    """
+
+
+@rust(py=False, imports=["pyo3::exceptions::PyTypeError"])
 def explicit_ellipsis(
     a: Annotated[int | slice | EllipsisType, "Bound<'py, PyAny>"],
 ) -> str:  # ty:ignore[empty-body]
@@ -58,11 +70,11 @@ def test_slice() -> None:
 
 
 def test_ellipsis() -> None:
-    #     assert slice_shape(np.ones((2, 3, 5, 7)), 1, ..., 2) == [3, 5]
-    #     assert slice_shape(np.ones((2, 3, 5, 7)), 1, ..., slice(2, 3)) == [3, 5, 1]
-    #     assert slice_shape(np.ones((2, 3, 5, 7)), ..., 1, slice(2, 4)) == [2, 3, 2]
-    #     assert slice_shape(np.ones((2, 3, 5, 7)), 1, 2, ...) == [5, 7]
-    #     assert slice_shape(np.ones((2, 3, 5, 7)), 1, 2, 3, slice(4, None, 2)) == [2]
+    assert slice_shape(np.ones((2, 3, 5, 7)), 1, ..., 2) == [3, 5]
+    assert slice_shape(np.ones((2, 3, 5, 7)), 1, ..., slice(2, 3)) == [3, 5, 1]
+    assert slice_shape(np.ones((2, 3, 5, 7)), ..., 1, slice(2, 4)) == [2, 3, 2]
+    assert slice_shape(np.ones((2, 3, 5, 7)), 1, 2, ...) == [5, 7]
+    assert slice_shape(np.ones((2, 3, 5, 7)), 1, 2, 3, slice(4, None, 2)) == [2]
 
     assert explicit_ellipsis(1) == "int"
     assert explicit_ellipsis(slice(1)) == "slice"

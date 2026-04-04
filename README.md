@@ -133,13 +133,13 @@ def calc_balances_rust(
     """
 ```
 
-N | py (ms) | rust (ms) | speedup (%)
+N | py (ms) | rust (ms) | speedup
 -:| -------:|----------:|-----------:
-1000 | 0.6 | 1.9 | -68
-10000 | 1.5 | 0.1 | 1410
-100000 | 28.8 | 1.0 | 2775
-1000000 | 136.4 | 3.0 | 4496
-10000000 | 1248.0 | 25.5 | 4791
+1000 | 0.6 | 1.9 | -68%
+10000 | 1.5 | 0.1 | 1410%
+100000 | 28.8 | 1.0 | 2775%
+1000000 | 136.4 | 3.0 | 4496%
+10000000 | 1248.0 | 25.5 | 4791%
 
 For reference, this is at least as fast as the equivalent xenoform implementation.
 
@@ -196,7 +196,7 @@ def calc_dist_matrix_rust(
     """
 ```
 
-N | py (ms) | rust (ms) | speedup (%)
+N | py (ms) | rust (ms) | speedup
 -:|--------:|----------:|-----------:
 100 | 0.7 | 1.5 | -54%
 300 | 3.4 | 0.1 | 2838%

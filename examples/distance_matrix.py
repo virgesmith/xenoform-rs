@@ -51,7 +51,7 @@ def calc_dist_matrix_rust(
 
 
 if __name__ == "__main__":
-    print("N | py (ms) | rust (ms) | speedup (%)")
+    print("N | py (ms) | rust (ms) | speedup")
     print("-:|--------:|----------:|-----------:")
 
     for size in [100, 300, 1000, 3000, 10000]:
@@ -63,7 +63,8 @@ if __name__ == "__main__":
 
         start = time.process_time()
         dist_r = calc_dist_matrix_rust(p)
-        elapsed_r = time.process_time() - start
+        # windows process_time() is inaccurate
+        elapsed_r = (time.process_time() - start) or 1.0
 
         assert np.abs(dist_r - dist_p).max() < 1e-15
 

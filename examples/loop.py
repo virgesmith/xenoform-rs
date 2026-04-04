@@ -65,7 +65,7 @@ def main() -> None:
     rng = np.random.default_rng(19937)
     rate = 0.001
 
-    print("N | py (ms) | rust (ms) | speedup (%)")
+    print("N | py (ms) | rust (ms) | speedup")
     print("-:|--------:|----------:|-----------:")
     for n in [1000, 10000, 100000, 1000000, 10000000]:
         data = pd.Series(index=range(n), data=rng.integers(-100, 101, size=n), name="cashflow")
@@ -75,12 +75,13 @@ def main() -> None:
         py_time = process_time() - start
 
         start = process_time()
-        # Although pyo3/rust doesn't understand the type pd.Series, it can use the py::object API to manipulate
+        # Although pyo3/rust doesn't understand the type pd.Series, it can use the PyAny API to manipulate
         # and create instances of this type
         rust_result = calc_balances_rust(data, rate)
-        rust_time = process_time() - start
+        # windows process_time() is inaccurate
+        rust_time = (process_time() - start) or 1.0
 
-        print(f"{n} | {py_time * 1000:.1f} | {rust_time * 1000:.1f} | {100 * (py_time / rust_time - 1.0):.0f}")
+        print(f"{n} | {py_time * 1000:.1f} | {rust_time * 1000:.1f} | {(py_time / rust_time - 1.0):.0%}")
         assert py_result.equals(rust_result)
 
 
