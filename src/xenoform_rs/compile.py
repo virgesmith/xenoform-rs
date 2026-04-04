@@ -165,7 +165,7 @@ def _check_build_fetch_module_impl(
                     stdout=fd,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    # env=_get_cargo_env(),
+                    env=_get_cargo_env(),
                 )
             if compile_result.returncode != 0:
                 raise CompilationError(
