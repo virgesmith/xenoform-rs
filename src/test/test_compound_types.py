@@ -2,16 +2,18 @@ from typing import Annotated
 
 import pytest
 
-from xenoform_rs import rust
+from xenoform_rs import RustTypeError, rust
 from xenoform_rs.extension_types import translate_type
 
 
 def test_translate_compound_types() -> None:
-    # assert str(translate_type(int | float)) == "std::variant<int, double>"
-    assert str(translate_type(int | None)) == "Option<i32>", translate_type(int | None)  # type: ignore[arg-type]
-    assert str(translate_type(Annotated[int | float, "f64"])) == "f64"  # type: ignore[arg-type]
-    assert str(translate_type(Annotated[int | None, "&Bound<'_, PyAny>"])) == "&Bound<'_, PyAny>"  # type: ignore[arg-type]
-    # assert str(translate_type(int | float | None)) == "std::optional<std::variant<int, double>>"
+    with pytest.raises(RustTypeError):
+        translate_type(int | float)  # ty:ignore[invalid-argument-type]
+    with pytest.raises(RustTypeError):
+        translate_type(int | float | None)  # ty:ignore[invalid-argument-type]
+    assert str(translate_type(int | None)) == "Option<i32>", translate_type(int | None)  # ty: ignore[invalid-argument-type]
+    assert str(translate_type(Annotated[int | float, "f64"])) == "f64"  # ty: ignore[invalid-argument-type]
+    assert str(translate_type(Annotated[int | None, "&Bound<'_, PyAny>"])) == "&Bound<'_, PyAny>"  # ty: ignore[invalid-argument-type]
 
 
 @rust(py=False)
@@ -44,27 +46,23 @@ def test_optional_type() -> None:
     assert optional_type(None) == 42
 
 
-# @rust()
-# def compound_type(x: int | float | None) -> str:
-#     """
-#     if (x) {
-#         if (std::holds_alternative<int>(x.value())) {
-#             return "int";
-#         }
-#         return "float";
-#     }
-#     return "empty";
-#     """
+@rust(py=False)
+def overridden_compound_type(x: Annotated[int | float, "f64"]) -> float:  # type: ignore[empty-body]
+    """
+    Ok(x)
+    """
 
 
-# def test_compound_type() -> None:
-#     assert compound_type(1) == "int"
-#     assert compound_type(1.0) == "float"
-#     assert compound_type(None) == "empty"
+def test_compound_type() -> None:
+    assert overridden_compound_type(1.0) == 1.0
+    assert overridden_compound_type(12345) == 12345.0
+    # too big to fit into a float
+    with pytest.raises(OverflowError):
+        overridden_compound_type(10**310)
 
 
 if __name__ == "__main__":
     test_translate_compound_types()
     test_tuple_type()
     test_optional_type()
-    # test_compound_type()
+    test_compound_type()

@@ -78,9 +78,17 @@ class RustTypeTree:
             self.subtypes: tuple[RustTypeTree, ...] = ()
         else:
             self.subtypes = tuple(RustTypeTree(t) for t in tree.subtypes if t.type is not NoneType)
-        if self.type == "Option" and len(self.subtypes) == len(tree.subtypes) - 1 and len(self.subtypes) > 1:
-            raise TypeError(
-                "variant types are not currently supported, use '&Bound<'_, PyAny>' as an override rust type"
+        # Can only support optional types as a union of T | None, not arbitrary unions of multiple types or
+        # unions with more than 2 types
+        if (
+            tree.type == UnionType
+            and override is None
+            and (len(tree.subtypes) != 2 or not any(t.type is NoneType for t in tree.subtypes))
+        ):
+            raise RustTypeError(
+                "Variant types other than `T | None` are not supported, use an override to a generic "
+                'python type e.g. `Annotated[int | str, "&Bound<\'_, PyAny>"]` or coerce to a single rust type '
+                'e.g. `Annotated[int | float, "f64"]`.'
             )
 
     def __repr__(self) -> str:

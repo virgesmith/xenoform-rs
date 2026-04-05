@@ -2,13 +2,19 @@ import inspect
 import logging
 import re
 import subprocess
+import sys
 from collections import defaultdict
 from collections.abc import Callable
+from importlib.machinery import ExtensionFileLoader
+from importlib.util import module_from_spec, spec_from_loader
 from operator import add
+from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from itrx import Itr
 
+from xenoform_rs.errors import RustConfigError
 from xenoform_rs.extension_types import translate_type
 
 logger = logging.getLogger(__name__)
@@ -157,3 +163,38 @@ def _replace_tuple_angle_brackets(arg_def: str) -> str:
         i += 1
 
     return "".join(result)
+
+
+def get_lib_path(module_dir: Path, module_name: str) -> Path:
+    """Get the expected path of the compiled shared library for the current platform"""
+    match sys.platform:
+        case "linux":
+            return module_dir / "target/release" / f"lib{module_name}.so"
+        case "darwin":
+            return module_dir / "target/release" / f"lib{module_name}.dylib"
+        case "win32":
+            # Windows library names don't typically start with 'lib' prefix
+            return module_dir / "target/release" / f"{module_name}.dll"
+        case _:
+            raise RustConfigError(f"Unsupported platform: {sys.platform}")
+
+
+def load_rust_module(lib_path: Path, module_name: str) -> ModuleType:
+    """
+    Load the compiled Rust shared library as a Python module, directly from the given path.
+    This is normally handled by the `rust` decorator, but this function can be used to load modules
+    compiled by other means, e.g. directly with cargo.
+    """
+
+    # Load the shared library as a Python module (Windows needs an absolute path here)
+    loader = ExtensionFileLoader(module_name, str(lib_path.resolve()))
+    spec = spec_from_loader(module_name, loader)
+    if spec is None or spec.loader is None:
+        raise RustConfigError(f"Could not create module spec for {lib_path}")
+
+    module = module_from_spec(spec)
+    # It's crucial to add the module to sys.modules BEFORE executing its spec.
+    # PyO3's PyInit_ functions expect the module to be registered this way.
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module

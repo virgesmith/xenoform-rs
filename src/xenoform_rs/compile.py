@@ -1,4 +1,3 @@
-import importlib.util
 import inspect
 import logging
 import os
@@ -7,7 +6,6 @@ import sys
 from collections import defaultdict
 from collections.abc import Callable
 from functools import cache, lru_cache, wraps
-from importlib.machinery import ExtensionFileLoader
 from pathlib import Path
 from types import ModuleType
 from typing import ParamSpec, TypeVar
@@ -15,7 +13,7 @@ from typing import ParamSpec, TypeVar
 from xenoform_rs.config import get_config
 from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
-from xenoform_rs.utils import get_function_scope, translate_function_signature
+from xenoform_rs.utils import get_function_scope, get_lib_path, load_rust_module, translate_function_signature
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +24,6 @@ extmodule_root = get_config().extmodule_root
 sys.path.append(str(extmodule_root))
 
 _module_registry: dict[str, ModuleSpec] = defaultdict(ModuleSpec)
-
-
-def _get_lib_path(module_dir: Path, module_name: str) -> Path:
-    match sys.platform:
-        case "linux":
-            return module_dir / "target/release" / f"lib{module_name}.so"
-        case "darwin":
-            return module_dir / "target/release" / f"lib{module_name}.dylib"
-        case "win32":
-            # Windows library names don't typically start with 'lib' prefix
-            return module_dir / "target/release" / f"{module_name}.dll"
-        case _:
-            raise RustConfigError(f"Unsupported platform: {sys.platform}")
 
 
 def _get_cargo_env() -> dict[str, str]:
@@ -116,7 +101,7 @@ def _check_build_fetch_module_impl(
 
     module, code, hashval = module_spec.make_source(module_name)
 
-    lib_path = _get_lib_path(module_dir, module_name)
+    lib_path = get_lib_path(module_dir, module_name)
 
     # if a built module already exists, and matches the hash of the source code, just use it
     module_checksum = _get_module_checksum(lib_path, module_name)
@@ -184,19 +169,7 @@ def _check_build_fetch_module_impl(
             f"Check cargo output for build errors or different naming conventions."
         )
 
-    # Load the shared library as a Python module (Windows needs an absolute path here)
-    loader = ExtensionFileLoader(module_name, str(lib_path.resolve()))
-    spec = importlib.util.spec_from_loader(module_name, loader)
-    if spec is None:
-        raise RustConfigError(f"Could not create module spec for {lib_path}")
-
-    module = importlib.util.module_from_spec(spec)
-    # It's crucial to add the module to sys.modules BEFORE executing its spec.
-    # PyO3's PyInit_ functions expect the module to be registered this way.
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)  # ty:ignore[unresolved-attribute]
-
-    return module
+    return load_rust_module(lib_path, module_name)
 
 
 @cache  # unlimited module cache

@@ -37,7 +37,7 @@ It's a work-in-progress and will likely never be as functionally complete than i
 - [X] call in-crate modules
 - [ ] link to external libs
 - [ ] ~~auto-vectorisation~~ (not supported)
-- [ ] ~~compound types~~ (rust doesn't support this, use `PyAny`)
+- [ ] ~~compound types~~ (would require support for rust enums)
 
 Notes:
 
@@ -45,7 +45,9 @@ Notes:
     - typed functions/closures are not supported.
     - default type mapping (`Callable` -> `Bound<'py, PyCFunction>`) works for return values but doesn't allow for python functions/lambdas to be passed into rust. In this case override to `Bound<'py, PyAny>` (`PyAnyMethods` implement the call... traits).
 - complex: 128 bit support only (i.e. not `np.complex64`)
-- if additional modules are specified, the files are copied into the crate
+- if additional modules are specified, the files are copied into the crate. Modifications to additional modules will trigger a rebuild.
+- compound/variant types: only optional (`T | None`) is supported. Use a type override to a generic python type e.g. `Annotated[int | float, "&Bound<'_, PyAny>"]` or coerce to a single rust type e.g. `Annotated[int | float, "f64"]`.
+
 
 ## Usage
 
