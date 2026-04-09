@@ -226,7 +226,7 @@ def rust(
         nonlocal module_name
         module_name = module_name or f"{Path(inspect.getfile(func)).stem}"
         if not module_name.isidentifier():
-            raise ValueError(f"Invalid module name: {module_name}. Use only alphanumeric characters and '_'")
+            raise RustConfigError(f"Invalid module name: {module_name}. Use only alphanumeric characters and '_'")
 
         function_body = sig + " {" + (func.__doc__ or "") + "}"
 

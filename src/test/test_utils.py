@@ -1,6 +1,6 @@
 import pytest
 
-from xenoform_rs.utils import rust_dependency
+from xenoform_rs import RustConfigError, rust_dependency
 
 
 def test_rust_dependency() -> None:
@@ -11,9 +11,9 @@ def test_rust_dependency() -> None:
         == """pyo3 = { version = "0.28", features = ['extension-module', 'abi3-py312'] }"""
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(RustConfigError):
         rust_dependency("numpy")
-    with pytest.raises(ValueError):
+    with pytest.raises(RustConfigError):
         rust_dependency("numpy", "*", features=["blah"])
 
 

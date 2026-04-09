@@ -12,7 +12,7 @@ def round_sign() -> Callable[[float, bool], int]:  # ty: ignore[empty-body]
     // c.f. C++: return [](double x, bool s) -> int { return int(s ? -x : x); };
 
     let closure = PyCFunction::new_closure(py, None, None,
-            move |args: &Bound<'_, PyTuple>, kwargs: Option<&Bound<'_, PyDict>>| -> PyResult<i32> {
+        move |args: &Bound<'_, PyTuple>, kwargs: Option<&Bound<'_, PyDict>>| -> PyResult<i32> {
         // Expect (float x, bool s) and nothing else
         if kwargs.is_some() || args.len() != 2 {
             return Err(PyTypeError::new_err("invalid arguments"));
@@ -34,7 +34,7 @@ def round_sign_py(x: float, s: bool) -> int:
 @rust()
 def modulo(n: int) -> Callable[[int], int]:  # ty: ignore[empty-body]
     """
-    //return [n](int i) { return i % n; };
+    // c.f. C++: return [n](int i) { return i % n; };
 
     let closure = PyCFunction::new_closure(
         py,
