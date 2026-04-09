@@ -106,7 +106,7 @@ def test_signature_translation2() -> None:
 
 
 @rust(py=False)
-def max(i: int, j: int) -> int:  # type: ignore[empty-body]
+def max(i: int, j: int) -> int:  # ty: ignore[empty-body]
     # comments can be added before...
     "if i > j { Ok(i) } else { Ok(j) }"
     # ...and after the docstr
@@ -129,7 +129,7 @@ def test_ref() -> None:
 
 
 @rust(py=False, imports=["pyo3::exceptions::PyRuntimeError"])
-def throws() -> bool:  # type: ignore[empty-body]
+def throws() -> bool:  # ty: ignore[empty-body]
     """
     Err(PyRuntimeError::new_err("oops"))
     """
@@ -146,7 +146,7 @@ def test_unknown_type() -> None:
         class X: ...
 
         @rust()
-        def unknown(x: X) -> bool:  # type: ignore[empty-body]
+        def unknown(x: X) -> bool:  # ty: ignore[empty-body]
             "false"
 
 

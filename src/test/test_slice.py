@@ -9,7 +9,7 @@ from xenoform_rs import rust, rust_dependency
 
 
 @rust(py=False, imports=["pyo3::types::PySlice"])
-def parse_slice(length: int, s: slice) -> list[int]:  # type: ignore[empty-body]
+def parse_slice(length: int, s: slice) -> list[int]:  # ty: ignore[empty-body]
     """
     let idx = s.indices(length as isize)?;
 

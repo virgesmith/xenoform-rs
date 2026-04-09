@@ -69,7 +69,7 @@ def test_pytypetree_tuple_and_ellipsis() -> None:
 
 def test_pytypetree_raises_on_annotated() -> None:
     with pytest.raises(TypeError):
-        PyTypeTree(Annotated[int, "foo"])  # type: ignore[arg-type]
+        PyTypeTree(Annotated[int, "foo"])  # ty: ignore[invalid-argument-type]
 
 
 def test_specialised_types() -> None:
@@ -117,28 +117,28 @@ def test_parse_annotation() -> None:
     assert t is int
     assert q == {}
 
-    t, q = parse_annotation(Annotated[int, "i64"])  # type: ignore[arg-type]
+    t, q = parse_annotation(Annotated[int, "i64"])  # ty: ignore[invalid-argument-type]
     assert t is int
     assert q == {"override": "i64"}
 
-    t, q = parse_annotation(Annotated[int, "u32"])  # type: ignore[arg-type]
+    t, q = parse_annotation(Annotated[int, "u32"])  # ty: ignore[invalid-argument-type]
     assert t is int
     assert q == {"override": "u32"}
 
     with pytest.raises(TypeError):
-        parse_annotation(Annotated[int, 42])  # type: ignore[arg-type]
+        parse_annotation(Annotated[int, 42])  # ty: ignore[invalid-argument-type]
 
 
 def test_overridden_annotated_types() -> None:
-    rusttype = translate_type(Annotated[int, "u32"])  # type: ignore[arg-type]
+    rusttype = translate_type(Annotated[int, "u32"])  # ty: ignore[invalid-argument-type]
     assert str(rusttype) == "u32"
 
-    rusttype = translate_type(Annotated[list[int], "&Bound<'_, PyList>"])  # type: ignore[arg-type]
+    rusttype = translate_type(Annotated[list[int], "&Bound<'_, PyList>"])  # ty: ignore[invalid-argument-type]
     assert str(rusttype) == "&Bound<'_, PyList>"
 
 
 @rust(py=False)
-def fibonacci(n: Annotated[int, "u64"]) -> Annotated[int, "u64"]:  # type: ignore[empty-body]
+def fibonacci(n: Annotated[int, "u64"]) -> Annotated[int, "u64"]:  # ty: ignore[empty-body]
     """
     fn fib_impl(n: u64) -> u64 {
         match n {

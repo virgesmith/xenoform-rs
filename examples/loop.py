@@ -13,6 +13,8 @@ def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
     """Cannot vectorise, since each value is dependent on the previous value"""
     result = pd.Series(index=data.index)
     result_np = result.to_numpy()
+    # pandas>=3 returns a read only array, so make it writeable
+    result_np.flags.writeable = True
     current_value = 0.0
     for i, value in data.items():
         current_value = (current_value + value) * (1 - rate)

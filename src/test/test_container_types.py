@@ -25,7 +25,7 @@ def test_set() -> None:
 
 
 @rust(py=False, imports=["std::collections::HashMap"])
-def dict_sum(d: dict[int, int]) -> int:  # type: ignore[empty-body]
+def dict_sum(d: dict[int, int]) -> int:  # ty: ignore[empty-body]
     """
     Ok(d.values().sum())
     """
@@ -36,7 +36,7 @@ def test_dict() -> None:
 
 
 @rust(py=False)
-def tuple_sum(t4: tuple[int, int, int, int]) -> int:  # type: ignore[empty-body]
+def tuple_sum(t4: tuple[int, int, int, int]) -> int:  # ty: ignore[empty-body]
     """
     Ok(t4.0 + t4.1 + t4.2 + t4.3)
     """
@@ -47,7 +47,7 @@ def test_tuple() -> None:
 
 
 @rust(py=False)
-def frozenset_length(s: frozenset[int]) -> int:  # type: ignore[empty-body]
+def frozenset_length(s: frozenset[int]) -> int:  # ty: ignore[empty-body]
     """
     Ok(s.len() as i32)
     """
@@ -55,7 +55,7 @@ def frozenset_length(s: frozenset[int]) -> int:  # type: ignore[empty-body]
 
 def test_frozenset() -> None:
     assert frozenset_length(frozenset((1, 2, 3, 1))) == 3
-    assert frozenset_length({1, 2, 3, 1}) == 3  # type: ignore[arg-type] # noqa: B033
+    assert frozenset_length({1, 2, 3, 1}) == 3  # ty: ignore[invalid-argument-type] # noqa: B033
 
 
 if __name__ == "__main__":

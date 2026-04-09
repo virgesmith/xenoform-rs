@@ -7,7 +7,7 @@ def test_edition_invalid() -> None:
     with pytest.raises(RustConfigError):
 
         @rust(edition="2204")
-        def f(i: int) -> bool:  # type: ignore[empty-body]
+        def f(i: int) -> bool:  # ty: ignore[empty-body]
             "return i % 2;"
 
         f(3)

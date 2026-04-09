@@ -35,7 +35,7 @@ def test_tuple_type() -> None:
 
 
 @rust(py=False)
-def optional_type(x: int | None) -> int:  # type: ignore[empty-body]
+def optional_type(x: int | None) -> int:  # ty: ignore[empty-body]
     """
     Ok(x.unwrap_or(42))
     """
@@ -47,7 +47,7 @@ def test_optional_type() -> None:
 
 
 @rust(py=False)
-def overridden_compound_type(x: Annotated[int | float, "f64"]) -> float:  # type: ignore[empty-body]
+def overridden_compound_type(x: Annotated[int | float, "f64"]) -> float:  # ty: ignore[empty-body]
     """
     Ok(x)
     """

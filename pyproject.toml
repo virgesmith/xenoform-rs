@@ -30,7 +30,7 @@ dev = [
 
 [project.optional-dependencies]
 examples = [
-    "pandas<3.0",
+    "pandas>=3.0",
 ]
 
 

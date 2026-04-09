@@ -7,7 +7,7 @@ def test_profile_invalid() -> None:
     with pytest.raises(RustConfigError):
 
         @rust(py=False, profile={"opt-level": "4"})
-        def f(i: int) -> bool:  # type: ignore[empty-body]
+        def f(i: int) -> bool:  # ty: ignore[empty-body]
             "return i % 2;"
 
         f(3)
