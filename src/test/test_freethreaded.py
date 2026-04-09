@@ -1,6 +1,6 @@
-import warnings
 import sys
 import time
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 
 from itrx import Itr

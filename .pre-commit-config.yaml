@@ -9,6 +9,7 @@ repos:
     rev: v0.15.9
     hooks:
       - id: ruff-check
+        args: [--fix]
       - id: ruff-format
 # doesn't exist (yet)
 # - repo: https://github.com/astral-sh/ty-pre-commit
