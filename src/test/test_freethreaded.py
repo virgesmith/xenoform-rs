@@ -1,3 +1,4 @@
+import warnings
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -38,12 +39,17 @@ def test_freethreaded() -> None:
         futures.consume()
     elapsed = time.perf_counter() - start
 
-    # this cant be tested reliably in pytest,
     if not build_freethreaded():
         assert elapsed > t * n_threads
-    # else:
-    #   assert elapsed < t * n_threads
-    print(elapsed, t * n_threads)
+    else:
+        if elapsed >= t * n_threads:
+            warnings.warn(
+                f"test_freethreaded: Interpreter is free-threaded, but elapsed time is greater than expected: "
+                f"Elapsed: {elapsed:.2f}, Total: {t * n_threads:.2f}. "
+                "This may be a bug but could also be due to CI resource contraints.",
+                stacklevel=2,
+            )
+        assert elapsed < t * n_threads
 
 
 if __name__ == "__main__":
