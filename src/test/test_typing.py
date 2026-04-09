@@ -8,7 +8,7 @@ from xenoform_rs.errors import AnnotationError
 
 
 @rust(py=False)
-def f(_i: int, _x: float, *, _b: bool) -> str:  # type: ignore[empty-body]
+def f(_i: int, _x: float, *, _b: bool) -> str:  # ty: ignore[empty-body]
     """
     Ok(String::from("hello"))
     """

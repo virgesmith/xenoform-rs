@@ -13,7 +13,7 @@ from xenoform_rs import rust, rust_dependency
 
 
 @rust(dependencies=[rust_dependency("num", "*")], imports=["pyo3::types::PyComplex", "num::complex::Complex"])
-def complex_double_func(z: complex) -> complex:  # type: ignore[empty-body]
+def complex_double_func(z: complex) -> complex:  # ty: ignore[empty-body]
     """
     let z = Complex::<f64>::new(z.real(), z.imag());
     let z = z.powc(z);

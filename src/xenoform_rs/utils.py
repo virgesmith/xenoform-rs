@@ -88,13 +88,10 @@ def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple
                 arg_def = f"{var_name}: {rusttype}"
                 arg_annotation = f"{var_name}"
             if var_name in defaults:
-                # arg_def += f"={_translate_value(defaults[var_name])}"
                 arg_annotation += f"={_translate_value(defaults[var_name])}"
             if "tuple_placeholder" in arg_def:
                 arg_def = _replace_tuple_angle_brackets(arg_def)
             arg_defs.append(arg_def)
-            # dont create an annotation for var(kw)args
-            # if arg_spec.varargs != var_name and arg_spec.varkw != var_name:
             arg_annotations.append(arg_annotation)
     if pos_only is not None:
         arg_annotations.insert(pos_only, "/")
@@ -156,7 +153,6 @@ def _replace_tuple_angle_brackets(arg_def: str) -> str:
                 result.append(">")
             else:
                 result.append(")")
-            # i += 1
 
         else:
             result.append(arg_def[i])
