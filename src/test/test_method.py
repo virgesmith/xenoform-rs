@@ -18,7 +18,7 @@ class ClassB(Base):
     def method(pyself: Self) -> int:  # ty: ignore[empty-body]  # noqa: N805
         """
         // extract instance variable
-        Ok(pyself.getattr("x")?.extract::<i32>()?)
+        pyself.getattr("x")?.extract::<i32>()
         """
 
     @staticmethod
@@ -33,7 +33,7 @@ class ClassB(Base):
     def class_method(cls: type) -> str:  # ty: ignore[empty-body]
         """
         // extract X from cls arg
-        Ok(cls.getattr("X")?.extract::<String>()?)
+        cls.getattr("X")?.extract::<String>()
         """
 
 
@@ -60,7 +60,7 @@ class ClassC(ClassB):
     def class_method(cls: type) -> str:  # ty: ignore[empty-body]
         """
         // extract X from cls arg
-        Ok(cls.getattr("X")?.extract::<String>()?)
+        cls.getattr("X")?.extract::<String>()
         """
 
 
