@@ -32,6 +32,7 @@ pyo3 = {{ version = "{pyo3_version}", features = ["extension-module", "abi3-py31
 
 _MODULE_TEMPLATE = """
 #![allow(non_upper_case_globals)]
+#![allow(non_snake_case)]
 {modules}
 
 #[pyo3::pymodule{freethreaded}]

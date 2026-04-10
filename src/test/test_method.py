@@ -37,13 +37,22 @@ class ClassB(Base):
         """
 
 
-class ClassC(Base):
+class ClassC(ClassB):
     X: str = "C"
 
     @rust(py=False)
-    def method(_self: Self) -> int:  # ty: ignore[empty-body]  # noqa: N805
+    def __init__(pyself: Self) -> None:  # noqa: N805
         """
-        Ok(3)
+        // check can override and set superclass attribute
+        pyself.setattr("x", 3)?;
+        Ok(())
+        """
+
+    @rust(py=False)
+    def method(pyself: Self) -> int:  # ty: ignore[empty-body]  # noqa: N805
+        """
+        // check can override and access superclass attribute
+        Ok(-pyself.getattr("x")?.extract::<i32>()?)
         """
 
     @classmethod
@@ -56,7 +65,7 @@ class ClassC(Base):
 
 
 def test_function_scope() -> None:
-    assert get_function_scope(ClassA.method) == ("class_a",)
+    assert get_function_scope(ClassA.method) == ("ClassA",)
 
 
 def test_method() -> None:
@@ -70,7 +79,7 @@ def test_method() -> None:
     # test scope resolution works for instance methods
     assert a.method() == f(a) == 1
     assert b.method() == f(b) == 2
-    assert c.method() == f(c) == 3
+    assert c.method() == f(c) == -3
 
 
 def test_method_incorrect_usage() -> None:

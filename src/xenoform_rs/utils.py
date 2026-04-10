@@ -1,6 +1,5 @@
 import inspect
 import logging
-import re
 import subprocess
 import sys
 from collections import defaultdict
@@ -42,7 +41,7 @@ def get_function_scope(func: Callable[..., Any]) -> tuple[str, ...]:
     NB Does not work for static methods
     """
     return tuple(
-        re.sub(r"(?<!^)(?=[A-Z])", "_", s).lower()
+        s
         for s in func.__qualname__.split(".")[:-1]  # ty:ignore[unresolved-attribute]
         if s != "<locals>"
     )
