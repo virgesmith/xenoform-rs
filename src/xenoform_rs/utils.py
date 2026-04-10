@@ -1,6 +1,5 @@
 import inspect
 import logging
-import re
 import subprocess
 import sys
 from collections import defaultdict
@@ -42,7 +41,7 @@ def get_function_scope(func: Callable[..., Any]) -> tuple[str, ...]:
     NB Does not work for static methods
     """
     return tuple(
-        re.sub(r"(?<!^)(?=[A-Z])", "_", s).lower()
+        s
         for s in func.__qualname__.split(".")[:-1]  # ty:ignore[unresolved-attribute]
         if s != "<locals>"
     )
@@ -126,7 +125,7 @@ def rust_dependency(*args: str, **kwargs: Any) -> str:
                 params.append(f'{k} = "{v}"' if isinstance(v, str) else f"{k} = {v}")
             return f"{args[0]} = {{ {', '.join(params)} }}"
         case _:
-            raise ValueError("rust_dependency requires a name and either a version string or a keyword parameters")
+            raise RustConfigError("rust_dependency requires a name and either a version string or a keyword parameters")
 
 
 def _replace_tuple_angle_brackets(arg_def: str) -> str:

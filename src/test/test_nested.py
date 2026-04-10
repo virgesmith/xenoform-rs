@@ -33,7 +33,7 @@ class Outer:
 def test_get_function_scope() -> None:
     assert get_function_scope(test_nested) == ()
     # scopes are all lowercase, even if the class names are capitalized
-    assert get_function_scope(Outer.Inner.method) == ("outer", "inner")
+    assert get_function_scope(Outer.Inner.method) == ("Outer", "Inner")
 
 
 if __name__ == "__main__":

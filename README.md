@@ -143,7 +143,7 @@ N | py (ms) | rust (ms) | speedup
 1000000 | 136.4 | 3.0 | 4496%
 10000000 | 1248.0 | 25.5 | 4791%
 
-For reference, this is at least as fast as the equivalent xenoform implementation.
+For reference, this is about as fast as the equivalent xenoform implementation.
 
 Full code is in [examples/loop.py](examples/loop.py).
 

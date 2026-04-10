@@ -32,6 +32,7 @@ pyo3 = {{ version = "{pyo3_version}", features = ["extension-module", "abi3-py31
 
 _MODULE_TEMPLATE = """
 #![allow(non_upper_case_globals)]
+#![allow(non_snake_case)]
 {modules}
 
 #[pyo3::pymodule{freethreaded}]
@@ -122,7 +123,7 @@ class ModuleSpec:
         self.profile = _append_profile(self.profile, profile or {})
         self.modules |= set(modules or [])
         if edition and self.edition and edition != self.edition:
-            raise ValueError(f"Incompatible edition values: {edition} when {self.edition} has already been set")
+            raise RustConfigError(f"Incompatible edition values: {edition} when {self.edition} has already been set")
         self.edition = edition or self.edition
         return self
 

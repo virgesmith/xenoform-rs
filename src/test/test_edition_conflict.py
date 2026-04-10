@@ -1,11 +1,11 @@
 import pytest
 
-from xenoform_rs import rust
+from xenoform_rs import RustConfigError, rust
 
 
 def test_edition_conflict() -> None:
 
-    with pytest.raises(ValueError, match="Incompatible edition values: 2024 when 2021 has already been set"):
+    with pytest.raises(RustConfigError, match="Incompatible edition values: 2024 when 2021 has already been set"):
 
         @rust(py=False, edition="2021")
         def max(i: int, j: int) -> int:  # ty: ignore[empty-body]

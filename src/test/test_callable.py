@@ -11,8 +11,8 @@ def round_sign() -> Callable[[float, bool], int]:  # ty: ignore[empty-body]
     """
     // c.f. C++: return [](double x, bool s) -> int { return int(s ? -x : x); };
 
-    let closure = PyCFunction::new_closure(py, None, None,
-            move |args: &Bound<'_, PyTuple>, kwargs: Option<&Bound<'_, PyDict>>| -> PyResult<i32> {
+    PyCFunction::new_closure(py, None, None,
+        move |args: &Bound<'_, PyTuple>, kwargs: Option<&Bound<'_, PyDict>>| -> PyResult<i32> {
         // Expect (float x, bool s) and nothing else
         if kwargs.is_some() || args.len() != 2 {
             return Err(PyTypeError::new_err("invalid arguments"));
@@ -21,8 +21,7 @@ def round_sign() -> Callable[[float, bool], int]:  # ty: ignore[empty-body]
         let s = args.get_item(1)?.extract::<bool>()?;
         let val = if s { -x } else { x };
         Ok(val as i32)
-    });
-    closure.into()
+    })
     """
 
 
@@ -34,9 +33,9 @@ def round_sign_py(x: float, s: bool) -> int:
 @rust()
 def modulo(n: int) -> Callable[[int], int]:  # ty: ignore[empty-body]
     """
-    //return [n](int i) { return i % n; };
+    // c.f. C++: return [n](int i) { return i % n; };
 
-    let closure = PyCFunction::new_closure(
+    PyCFunction::new_closure(
         py,
         None,
         None,
@@ -47,8 +46,7 @@ def modulo(n: int) -> Callable[[int], int]:  # ty: ignore[empty-body]
             let i = args.get_item(0)?.extract::<i32>()?;
             Ok(i % n)
         },
-    );
-    closure.into()
+    )
     """
 
 
@@ -59,7 +57,7 @@ def modulo_py(n: int) -> Callable[[int], int]:
 @rust(py=False)
 def use_modulo(f: Annotated[Callable[[int], int], "Bound<'py, PyAny>"], i: int) -> int:  # ty: ignore[empty-body]
     """
-    Ok(f.call1((i,))?.extract::<i32>()?)
+    f.call1((i,))?.extract::<i32>()
     """
 
 
@@ -71,7 +69,7 @@ def rust_py(f: Callable[[int], int], i: int) -> int:
 def use_round_sign(f: Annotated[Callable[[float, bool], int], "Bound<'py, PyAny>"], x: float) -> int:  # ty: ignore[empty-body]
     """
     let args = (x, true).into_pyobject(py)?;
-    Ok(f.call(args, None)?.extract::<i32>()?)
+    f.call(args, None)?.extract::<i32>()
     """
 
 

@@ -38,7 +38,7 @@ def calc_balances_rust(
     // extract numpy arrays from the series. Note input is i64, output is f64
     let data_obj = data.call_method0("to_numpy")?;
     let data_np: &Bound<'py, PyArray1<i64>> = data_obj.cast()?;
-    let n = data_np.len()? as usize;
+    let n = data_np.len()?;
 
     // use the pattern from the numpy documentation
     let result_np = unsafe {
