@@ -56,9 +56,7 @@ def calc_balances_rust(
     let pd = py.import("pandas")?;
     let kwargs = PyDict::new(py);
     kwargs.set_item("index", data.getattr("index")?)?;
-    let result = pd.getattr("Series")?.call((result_np,), Some(&kwargs))?;
-
-    Ok(result)
+    pd.getattr("Series")?.call((result_np,), Some(&kwargs))
     """
 
 

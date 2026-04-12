@@ -26,20 +26,20 @@ automatically rebuilt when any changes are detected.
 
 By default, the binaries, source code and build logs for the compiled modules can be found in the `ext` subfolder (this location can be changed).
 
-It's a work-in-progress and will likely never be as functionally complete than its C++ sister, [xenoform](https://pypi.org/project/xenoform/):
+## Features
 
-- [X] `numpy` array support
-- [X] positional and keyword arguments and markers
-- [X] *args/**kwargs
-- [X] type overrides via `Annotated`
-- [X] callable types (partial). See below.
-- [X] free-threaded execution
-- [X] call in-crate modules
-- [ ] link to external libs
-- [ ] ~~auto-vectorisation~~ (not supported)
-- [ ] ~~compound types~~ (would require support for rust enums)
+- Supports `numpy` arrays (via the `numpy` crate) for customised "vectorised" operations.
+- By [default](#free-threaded-interpreter), supports parallel execution when the python interpreter is free-threaded.
+- Supports positional and keyword arguments with defaults, including positional-only and keyword-only markers (`/`,`*`)
+- Supports `*args` and `**kwargs`, mapped  (respectively) to `py::args` and `py::kwargs`. NB type annotations for these
+types are still useful for python type checkers.
+- Supports custom dependencies and imports.
+- Using annotated types, you can override the default mapping of python types to rust types, or pass types
+- Callable types are supported both as arguments and return values. See [below](#callable-types).
+- Optional (`T | None`) types are supported, mapping to `Option<T>`
+- Can link to separate rust sources, see []() for details.
 
-Notes:
+Caveats & points to note:
 
 - callable types:
     - typed functions/closures are not supported.
@@ -47,6 +47,40 @@ Notes:
 - complex: 128 bit support only (i.e. not `np.complex64`)
 - if additional modules are specified, the files are copied into the crate. Modifications to additional modules will trigger a rebuild.
 - compound/variant types: only optional (`T | None`) is supported. Use a type override to a generic python type e.g. `Annotated[int | float, "&Bound<'_, PyAny>"]` or coerce to a single rust type e.g. `Annotated[int | float, "f64"]`.
+- no support currently for linking to external prebuilt binaries
+- no support for compound types (would require building support for rust enums)
+- due to retrictions arising from linguistic differences, xenoform-rs will likely never be as functionally complete than its C++ sister, [xenoform](https://pypi.org/project/xenoform/)
+
+
+## Getting started
+
+Install the package
+
+```sh
+pip install xenoform-rs
+```
+
+```py
+
+from xenoform_rs import rust
+
+@rust(
+    py=False # don't implicitly add the python context as the first argument
+
+)
+def add(a: int, b: int) -> int:
+    """
+    Ok(a + b)
+    """
+
+
+def append(a: list[float], b: float) -> None:
+
+print(add(2, 2))
+```
+
+
+
 
 
 ## Usage
@@ -209,3 +243,70 @@ N | py (ms) | rust (ms) | speedup
 For reference, this is *five times faster* than the xenoform implementation, which has openmp optimisations!
 
 Full code is in [examples/distance_matrix.py](examples/distance_matrix.py).
+
+
+## Configuration
+
+### `pyo3` version
+
+The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default is currently 0.28.
+
+### Location of Extension Modules
+
+By default, compiled modules are placed in an `ext` subdirectory of your project's root. If this location is unsuitable,
+it can be overridden using the environment variable `XENOFORM_RS_EXTMODULE_ROOT`. NB avoid using characters in paths
+(e.g. space, hyphen) that would not be valid in a python module name.
+
+### Free-threaded Interpreter
+
+By default, if the interpreter is free-threaded, extension modules will be built without the GIL. This requires the
+extension code to be threadsafe. If xenoform detects an environment variable `XENOFORM_RS_DISABLE_FT`, free-threading is
+disabled.
+
+
+## Type Translations
+
+### Default mapping
+
+Basic Python types are recursively mapped to C++ types, like so:
+
+Python | rust
+-------|----
+`None` | `()`
+`int` | `i32`
+`np.int32` | `i32`
+`np.int64` | `i64`
+`bool` | `bool`
+`float` | `f64`
+`np.float32` | `f32`
+`np.float64` | `f64`
+`complex` | `Bound<'py, PyComplex>`
+`np.complex128` | `Bound<'py, PyComplex>`
+`str` | `String`
+`np.ndarray` | `PyReadonlyArrayDyn`
+`bytes` | `&'py [u8]`
+`bytearray` | `Bound<'py, PyByteArray`
+`list` | `Vec`
+`set` | `HashSet`
+`frozenset` | `HashSet`
+`dict` | `HashMap`
+`tuple` | `(...)`
+`slice` | `Bound<'py, PySlice>`
+`Any` | `Bound<'py, PyAny>`
+`Self` | `Bound<'py, PyAny>`
+`type` | `Bound<'py, PyType>`
+`*args` | `&Bound<'_, PyTuple>`
+`**kwargs` | `Option<&Bound<'_, PyDict>>`
+`T \| None` | `Option<T>`
+`Callable` | `Bound<'py, PyCFunction>`
+`...` | `Bound<'py, PyEllipsis>`
+
+
+
+
+Thus, `dict[str, list[float]]` becomes - by default -  `HashMap<String, Vec<f64>>`. Also,
+any C++ headers required to define the mapped type will be automatically #include'd in the module source code.
+
+TODO By default, only `np.array` is mapped to a type that supports in-place modification. For `dict`, `list`,
+or `set` map to the corresponding pybind11 type, e.g. `py::list` (see below). Note also `py::bytearray` has no mutable
+methods.
