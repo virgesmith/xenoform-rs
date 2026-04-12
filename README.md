@@ -16,7 +16,8 @@ def vector_sum(v: list[int]) -> int:  # ty: ignore[empty-body]
 ```
 
 When Python loads this file, all functions using this decorator have their function signatures translated to rust
-and the source for an extension module is generated. The first time any function is called, the module is built, the attribute corresponding to the (empty) Python function is replaced with the rust implementation in the module.
+and the source for an extension module is generated. The first time any function is called, the module is built, the
+attribute corresponding to the (empty) Python function is replaced with the rust implementation in the module.
 
 Subsequent calls to the function incur minimal overhead, as the attribute corresponding to the (dummy) python function
 now points to the rust implementation.
@@ -24,7 +25,8 @@ now points to the rust implementation.
 Each module stores a hash of its source code (and Cargo.toml). Modules are checked on load and
 automatically rebuilt when any changes are detected.
 
-By default, the binaries, source code and build logs for the compiled modules can be found in the `ext` subfolder (this location can be changed).
+By default, the binaries, source code and build logs for the compiled modules can be found in the `ext` subfolder (this
+location can be changed).
 
 ## Features
 
@@ -32,7 +34,7 @@ By default, the binaries, source code and build logs for the compiled modules ca
 - By [default](#free-threaded-interpreter), supports parallel execution when the python interpreter is free-threaded.
 - Supports positional and keyword arguments with defaults, including positional-only and keyword-only markers (`/`,`*`)
 - Supports `*args` and `**kwargs`, mapped  (respectively) to `py::args` and `py::kwargs`. NB type annotations for these
-types are still useful for python type checkers.
+types are still useful for python type checkers. See [test_kwargs.py](src/test/test_kwargs.py)
 - Supports custom dependencies and imports.
 - Using annotated types, you can override the default mapping of python types to rust types, or pass types
 - Callable types are supported both as arguments and return values. See [below](#callable-types).
@@ -43,13 +45,17 @@ Caveats & points to note:
 
 - callable types:
     - typed functions/closures are not supported.
-    - default type mapping (`Callable` -> `Bound<'py, PyCFunction>`) works for return values but doesn't allow for python functions/lambdas to be passed into rust. In this case override to `Bound<'py, PyAny>` (`PyAnyMethods` implement the call... traits).
+    - default type mapping (`Callable` -> `Bound<'py, PyCFunction>`) works for return values but doesn't allow for
+python functions/lambdas to be passed into rust. In this case override to `Bound<'py, PyAny>` (`PyAnyMethods` implement the call... traits).
 - complex: 128 bit support only (i.e. not `np.complex64`)
-- if additional modules are specified, the files are copied into the crate. Modifications to additional modules will trigger a rebuild.
-- compound/variant types: only optional (`T | None`) is supported. Use a type override to a generic python type e.g. `Annotated[int | float, "&Bound<'_, PyAny>"]` or coerce to a single rust type e.g. `Annotated[int | float, "f64"]`.
+- if additional modules are specified, the files are copied into the crate. Modifications to additional modules will
+trigger a rebuild.
+- compound/variant types: only optional (`T | None`) is supported. Use a type override to a generic python type e.g.
+`Annotated[int | float, "&Bound<'_, PyAny>"]` or coerce to a single rust type e.g. `Annotated[int | float, "f64"]`.
 - no support currently for linking to external prebuilt binaries
 - no support for compound types (would require building support for rust enums)
-- due to retrictions arising from linguistic differences, xenoform-rs will likely never be as functionally complete than its C++ sister, [xenoform](https://pypi.org/project/xenoform/)
+- due to retrictions arising from linguistic differences, xenoform-rs will likely never be as functionally complete
+than its C++ sister, [xenoform](https://pypi.org/project/xenoform/)
 
 
 ## Getting started
@@ -60,32 +66,38 @@ Install the package
 pip install xenoform-rs
 ```
 
-```py
+Simply decorate your rust-implemented functions with the `rust` decorator factory - it handles all the configuration and compilation. Here's a function that counts the elements in a multidimensional array:
 
-from xenoform_rs import rust
+```py
+from typing import Annotated
+
+import numpy as np
+import numpy.typing as npt
+
+from xenoform_rs import rust, rust_dependency
+
 
 @rust(
-    py=False # don't implicitly add the python context as the first argument
-
+    py=False,  # we don't require the python context as the first argument (we arent constructing any python objects or calling any python APIs)
+    dependencies=[rust_dependency("numpy", version="0.28")],  # declare we need the numpy crate
+    imports=["numpy::PyReadonlyArrayDyn"],  # import the type we need
 )
-def add(a: int, b: int) -> int:
+def array_nelems(a: npt.NDArray[np.int64]) -> Annotated[int, "usize"]:
+    # npt.NDArray[np.int64] maps by default to numpy::PyReadOnlyArrayDyn<i64>
+    # the return type is a rust usize converted to a python int
     """
-    Ok(a + b)
+    Ok(a.as_array().shape().iter().product())
     """
 
 
-def append(a: list[float], b: float) -> None:
-
-print(add(2, 2))
+print(array_nelems(np.empty([2, 3, 5, 7], dtype=np.int64)))
 ```
 
 
 
 
 
-## Usage
-
-Simply decorate your rust-implemented functions with the `rust` decorator factory - it handles all the configuration and compilation. It can be customised with these optional parameters:
+## Usage guide
 
 kwarg | type(=default) | description
 ----- | -------------- | -----------
@@ -100,37 +112,41 @@ kwarg | type(=default) | description
 
 ## Performance
 
-See [the (C++) xenoform version](https://github.com/virgesmith/xenoform/blob/main/README.md#performance) for context.
+Rust can offer very significant performance enhancements over python, especially where *vectorised* &ast; operations are not available, but even when they are.
 
-Requires the "examples" optional dependency (and [rust](https://rust-lang.org/tools/install/), of course):
+> &ast; "vectorisation" in this sense means implementing loops in compiled - rather than interpreted - code. In fact, the compiler also has various optimisations available to it including but by no means limited to "true" vectorisation (meaning hardware SIMD instructions).
+
+The first example deals with a situation an operations on a pandas Series must be done sequentially, and the second shows that significant performance gains can be had even when a vectorised python implemenation is possible. Running these examples requires  the "examples" optional dependency (and of course [rust](https://rust-lang.org/tools/install/)):
 
 ```sh
-uv sync --extra examples
+pip install xenoform-rs[examples]
 ```
+
 
 ### Loop
 
-Rust vs python comparison of a non-vectorisable operation on a `pd.Series`:
+This is a Rust vs python comparison of a non-vectorisable sequential operation on a `pd.Series`. Note that pyo3/rust knows nothing about pandas, but can still operate on such objects via their python API:
 
 ```py
 def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
     """Cannot vectorise, since each value is dependent on the previous value"""
     result = pd.Series(index=data.index)
-    result_a = result.to_numpy()
+    # Directly access the underlying numpy array for performance. pandas>=3 returns a read only array, so make it writeable
+    result_np = result.to_numpy()
+    result_np.flags.writeable = True
     current_value = 0.0
     for i, value in data.items():
         current_value = (current_value + value) * (1 - rate)
-        result_a[i] = current_value  # ty:ignore[invalid-assignment]
+        result_np[i] = current_value
     return result
+```
 
-
+```py
 @rust(
     dependencies=[rust_dependency("numpy", version="0.28")],
-    imports=[
-        "numpy::{PyArray1, PyArrayMethods}",
-        "pyo3::types::{PyDict, PyAnyMethods}",
-    ],
+    imports=["numpy::{PyArray1, PyArrayMethods}", "pyo3::types::{PyDict, PyAnyMethods}"],
     module_name="loop_rs",  # override as "loop" is a rust keyword
+    profile={"strip": "symbols"},
 )
 def calc_balances_rust(
     data: Annotated[pd.Series, "Bound<'py, PyAny>"], rate: float
@@ -142,7 +158,7 @@ def calc_balances_rust(
     // extract numpy arrays from the series. Note input is i64, output is f64
     let data_obj = data.call_method0("to_numpy")?;
     let data_np: &Bound<'py, PyArray1<i64>> = data_obj.cast()?;
-    let n = data_np.len()? as usize;
+    let n = data_np.len()?;
 
     // use the pattern from the numpy documentation
     let result_np = unsafe {
@@ -160,9 +176,7 @@ def calc_balances_rust(
     let pd = py.import("pandas")?;
     let kwargs = PyDict::new(py);
     kwargs.set_item("index", data.getattr("index")?)?;
-    let result = pd.getattr("Series")?.call((result_np,), Some(&kwargs))?;
-
-    Ok(result)
+    pd.getattr("Series")?.call((result_np,), Some(&kwargs))
 ```
 
 ```py
@@ -170,34 +184,38 @@ def calc_balances_rust(
 ```
 
 N | py (ms) | rust (ms) | speedup
--:| -------:|----------:|-----------:
-1000 | 0.6 | 1.9 | -68%
-10000 | 1.5 | 0.1 | 1410%
-100000 | 28.8 | 1.0 | 2775%
-1000000 | 136.4 | 3.0 | 4496%
-10000000 | 1248.0 | 25.5 | 4791%
-
-For reference, this is about as fast as the equivalent xenoform implementation.
+-:|--------:|----------:|-----------:
+1000 | 0.5 | 1.2 | -60%
+10000 | 2.0 | 0.1 | 2235%
+100000 | 18.7 | 0.5 | 3654%
+1000000 | 192.8 | 2.7 | 7131%
+10000000 | 1894.8 | 22.8 | 8214%
 
 Full code is in [examples/loop.py](examples/loop.py).
 
 ### Distance Matrix
 
-Rust vs python comparison of a vectorised operation on a `np.array`:
+For example, to compute a distance matrix between $N$ points in $D$ dimensions, an efficient `numpy` implementation
+could be:
 
 ```py
 def calc_dist_matrix_py(p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     "Compute distance matrix from points, using numpy"
     return np.sqrt(((p[:, np.newaxis, :] - p[np.newaxis, :, :]) ** 2).sum(axis=2))
+```
 
+bearing in mind there is some redundancy here as the resulting matrix is symmetric; however vectorisation with
+redundancy will always win the tradeoff against loops with no redundancy. But a rust implementation is significantly
+faster, partly because it can avoid redundant computations:
 
+```py
 @rust(
     dependencies=[rust_dependency("numpy", version="0.28")],
     imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"],
 )
 def calc_dist_matrix_rust(
     points: Annotated[npt.NDArray[np.float64], "PyReadonlyArray2<f64>"],
-) -> Annotated[npt.NDArray[np.float64], "Bound<'py, PyArray2<f64>>"]:  # ty: ignore[empty-body]
+) -> Annotated[npt.NDArray[np.float64], "Bound<'py, PyArray2<f64>>"]:
     """
 ```
 
@@ -234,22 +252,19 @@ def calc_dist_matrix_rust(
 
 N | py (ms) | rust (ms) | speedup
 -:|--------:|----------:|-----------:
-100 | 0.7 | 1.5 | -54%
-300 | 3.4 | 0.1 | 2838%
-1000 | 30.2 | 1.3 | 2246%
-3000 | 204.8 | 19.1 | 972%
-10000 | 2794.9 | 209.8 | 1232%
-
-For reference, this is *five times faster* than the xenoform implementation, which has openmp optimisations!
+100 | 0.4 | 1.3 | -68%
+300 | 3.6 | 0.2 | 1907%
+1000 | 28.7 | 2.3 | 1162%
+3000 | 208.1 | 20.8 | 902%
+10000 | 2270.2 | 236.2 | 861%
 
 Full code is in [examples/distance_matrix.py](examples/distance_matrix.py).
-
 
 ## Configuration
 
 ### `pyo3` version
 
-The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default is currently 0.28.
+The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default - and only supported version - is currently 0.28. Using a different version is not guaranteed to work, and may require type overrides.
 
 ### Location of Extension Modules
 
@@ -259,8 +274,7 @@ it can be overridden using the environment variable `XENOFORM_RS_EXTMODULE_ROOT`
 
 ### Free-threaded Interpreter
 
-By default, if the interpreter is free-threaded, extension modules will be built without the GIL. This requires the
-extension code to be threadsafe. If xenoform detects an environment variable `XENOFORM_RS_DISABLE_FT`, free-threading is
+By default, if the interpreter is free-threaded, extension modules will be built without the GIL. This requires the extension code to be threadsafe. If xenoform detects an environment variable `XENOFORM_RS_DISABLE_FT`, free-threading is
 disabled.
 
 
@@ -301,12 +315,48 @@ Python | rust
 `Callable` | `Bound<'py, PyCFunction>`
 `...` | `Bound<'py, PyEllipsis>`
 
+Thus, `dict[str, list[float]]` becomes - by default -  `HashMap<String, Vec<f64>>`.
 
+By default, the only type is something mutable is npt.NDArray. (`PyReadonlyArrayDyn` elements *are* mutable.) For `dict`, `list`, `set` or `bytearray` override to the corresponding pyo3 type, e.g. `PyList` (see [test_inplace.py](src/test/test_inplace.py)).
 
+## Callable Types
 
-Thus, `dict[str, list[float]]` becomes - by default -  `HashMap<String, Vec<f64>>`. Also,
-any C++ headers required to define the mapped type will be automatically #include'd in the module source code.
+TODO
 
-TODO By default, only `np.array` is mapped to a type that supports in-place modification. For `dict`, `list`,
-or `set` map to the corresponding pybind11 type, e.g. `py::list` (see below). Note also `py::bytearray` has no mutable
-methods.
+Passing and returning functions to and from C++ is supported, and they can be used interchangeably with python functions
+and lambdas. Annotate types using `Callable` e.g.
+
+```py
+@compile()
+def modulo(n: int) -> Callable[[int], int]:  # type: ignore[empty-body]
+    """
+    return [n](int i) { return i % n; };
+    """
+```
+
+pybind11's `py::function` and `py::cpp_function` types do not intrinsically contain information about the function's
+argument and return types, and are not used by default, although they can be used as type overrides if
+necessary, although code may also need to be modified to deal with `py::object` return types.
+
+See the examples in [test_callable.py](src/test/test_callable.py) for more detail.
+
+## Troubleshooting
+
+TODO
+
+The generated module source code is written to `module.cpp` in a specific folder (e.g. `ext/my_module_ext`). Compiler
+commands are redirected to `build.log` in the that folder. NB: build errors refuse to be redirected to a file, and
+`build.log` is not produced when running via pytest, due to the way it captures output streams.
+
+Adding `verbose=True` to the `compile(...)` decorator logs the steps taken, with timings, e.g.:
+
+```txt
+$ python perf.py
+    0.000285 registering perf_ext.perf.array_max (in ext)
+    0.000427 registering perf_ext.perf.array_max_autovec (in ext)
+    0.169118 module is up-to-date (e73f2972262ff9b0ae2c5c7a4abde95c035fb85d7b29317becf14ee282b5c79a)
+    0.169668 imported compiled module perf_ext.perf
+    0.169684 redirected perf.array_max to compiled function perf_ext.perf._array_max
+    0.213621 redirected perf.array_max_autovec to compiled function perf_ext.perf._array_max_autovec
+    ...
+```

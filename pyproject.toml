@@ -6,6 +6,7 @@ readme = "README.md"
 authors = [
     { name = "virgesmith", email = "andrew@friarswood.net" }
 ]
+license-files = ["LICENCE.md"]
 requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3.12",
@@ -22,9 +23,6 @@ dependencies = [
 [project.urls]
 "Homepage" = "https://github.com/virgesmith/xenoform-rs"
 "Bug Tracker" = "https://github.com/virgesmith/xenoform-rs/issues"
-
-[project.scripts]
-xenoform-rs = "xenoform_rs:main"
 
 [build-system]
 requires = ["uv_build>=0.11.0,<0.12.0"]
