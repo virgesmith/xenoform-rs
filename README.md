@@ -32,28 +32,28 @@ location can be changed).
 ## Features
 
 - Supports `numpy` arrays (via the `numpy` crate) for customised "vectorised" operations.
-- By [default](#free-threaded-interpreter), supports parallel execution when the python interpreter is free-threaded.
+- Using annotated types, you can override the default mapping of python types to rust types.
 - Supports positional and keyword arguments with defaults, including positional-only and keyword-only markers (`/`,`*`)
 - Supports `*args` and `**kwargs`, mapped  (respectively) to `&Bound<'py, PyTuple>` and `Option<&Bound<'py, PyDict>>`.
 NB type annotations for these types are still useful for python type checkers. See [test_kwargs.py](src/test/test_kwargs.py)
 - Supports custom dependencies and imports.
-- Using annotated types, you can override the default mapping of python types to rust types, or pass types
 - Callable types are supported both as arguments and return values. See [below](#callable-types).
 - Optional (`T | None`) types are supported, mapping to `Option<T>`
 - Can link to separate rust sources, see [test_modules.py](src/test/test_modules.py) for details.
+- By [default](#free-threaded-interpreter), supports parallel execution when the python interpreter is free-threaded.
 
 Caveats & points to note:
 
 - callable types (more detail [here](#callable-types)):
     - only generic (untyped) functions/closures are supported.
-    - the default type mapping (`Callable` -> `Bound<'py, PyCFunction>`) works for return values but not for arguments.
+    - a type override is necessary to pass functions as arguments. The default works for return values.
 - complex: 128 bit support only (i.e. not `np.complex64`)
 - if additional modules are specified, the files are copied into the crate. Modifications to additional modules will
 trigger a rebuild.
-- compound/variant types: only optional (`T | None`) is supported. Use a type override to a generic python type e.g.
-`Annotated[int | float, "&Bound<'py, PyAny>"]` or coerce to a single rust type e.g. `Annotated[int | float, "f64"]`.
+- no support for compound types, other than optional (`T | None`) (This would require building support for rust enums).
+Use a type override to a generic python type e.g. `Annotated[int | float, "&Bound<'py, PyAny>"]` or coerce to a single
+rust type e.g. `Annotated[int | float, "f64"]`.
 - no support currently for linking to external prebuilt binaries
-- no support for compound types (would require building support for rust enums)
 - due to restrictions arising from linguistic differences, xenoform-rs will likely never be as functionally complete
 than its C++ sister, [xenoform](https://pypi.org/project/xenoform/)
 
@@ -62,7 +62,7 @@ than its C++ sister, [xenoform](https://pypi.org/project/xenoform/)
 Install the package
 
 ```sh
-uv add xenoform-rs  # or use pip
+uv add xenoform-rs  # or pip install xenoform-rs
 ```
 
 Simply decorate your rust-implemented functions with the `rust` decorator factory - it handles all the configuration and compilation. Here's a function that counts the elements in a multidimensional array:
@@ -83,16 +83,16 @@ from xenoform_rs import rust, rust_dependency
 )
 def array_nelems(a: npt.NDArray[np.int64]) -> Annotated[int, "usize"]:
     # npt.NDArray[np.int64] maps by default to numpy::PyReadOnlyArrayDyn<i64>
-    # the return type is a rust usize converted to a python int
+    # the return type is a rust usize which gets converted to a python int
     """
     Ok(a.as_array().shape().iter().product())
     """
 
-
-print(array_nelems(np.empty([2, 3, 5, 7], dtype=np.int64)))
+if __name__ == "__main__":
+    print(array_nelems(np.empty([2, 3, 5, 7], dtype=np.int64)))
 ```
 
-## Decorator parameters
+## The `@rust` decorator factory parameters
 
 name | type | default | description
 ---- | ---- | ------- | -----------
@@ -111,15 +111,16 @@ Rust can offer very significant performance enhancements over python, especially
 
 > &ast; "vectorisation" in this sense means implementing loops in compiled - rather than interpreted - code. In fact, the compiler also has various optimisations available to it including but by no means limited to "true" vectorisation (meaning hardware SIMD instructions).
 
-The first example deals with a an operation on a pandas Series that must be done sequentially, and the second shows that significant performance gains can be had even when a vectorised python implementation is possible. Running these examples requires  the "examples" optional dependency (and of course [rust](https://rust-lang.org/tools/install/)):
+The first example deals with an operation on a pandas Series that must be done sequentially, and the second shows that significant performance gains can be had even when a vectorised python implementation is available. Running these examples requires the "examples" optional dependencies (and of course [rust](https://rust-lang.org/tools/install/)):
 
 ```sh
-pip install xenoform-rs[examples]
+uv add xenoform-rs --extra examples  # or pip install xenoform-rs[examples]
 ```
 
 ### Loop
 
-This is a Rust vs python comparison of a non-vectorisable sequential operation on a `pd.Series`. Note that pyo3/rust knows nothing about pandas, but can still operate on such objects via their python API:
+This is a Rust vs python comparison of a non-vectorisable sequential operation on a `pd.Series`. First a python
+implementation...
 
 ```py
 def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
@@ -134,6 +135,9 @@ def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
         result_np[i] = current_value
     return result
 ```
+
+...and the equivalent rust implementation. Note that pyo3/rust knows nothing about pandas, but can still work with
+such objects via their python API:
 
 ```py
 @rust(
@@ -177,6 +181,9 @@ def calc_balances_rust(
     """
 ```
 
+Performance comparison:
+
+
 N | py (ms) | rust (ms) | speedup
 -:|--------:|----------:|-----------:
 1000 | 0.5 | 1.2 | -60%
@@ -189,7 +196,7 @@ Full code is in [examples/loop.py](examples/loop.py).
 
 ### Distance Matrix
 
-For example, to compute a distance matrix between $N$ points in $D$ dimensions, an efficient `numpy` implementation
+In this example we compute a distance matrix between $N$ points in $D$ dimensions. An efficient `numpy` implementation
 could be:
 
 ```py
@@ -200,7 +207,7 @@ def calc_dist_matrix_py(p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
 
 bearing in mind there is some redundancy here as the resulting matrix is symmetric; however vectorisation with
 redundancy will always win the tradeoff against loops with no redundancy. But a rust implementation is significantly
-faster, partly because it can avoid redundant computations:
+faster, partly because it can avoid the redundant computations:
 
 ```py
 @rust(
@@ -254,24 +261,6 @@ N | py (ms) | rust (ms) | speedup
 
 Full code is in [examples/distance_matrix.py](examples/distance_matrix.py).
 
-## Configuration
-
-### `pyo3` version
-
-The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default - and only supported version - is currently 0.28. Using a different version is not guaranteed to work, and may require type overrides.
-
-### Location of Extension Modules
-
-By default, compiled modules are placed in an `ext` subdirectory of your project's root. If this location is unsuitable,
-it can be overridden using the environment variable `XENOFORM_RS_EXTMODULE_ROOT`. NB avoid using characters in paths
-(e.g. space, hyphen) that would not be valid in a python module name.
-
-### Free-threaded Interpreter
-
-By default, if the interpreter is free-threaded, extension modules will be built without the GIL. This requires the extension code to be threadsafe. If xenoform detects an environment variable `XENOFORM_RS_DISABLE_FT`, free-threading is
-disabled.
-
-
 ## Type Translations
 
 ### Default mapping
@@ -279,7 +268,7 @@ disabled.
 Basic Python types are recursively mapped to rust types, like so:
 
 Python | rust
--------|----
+------ | ---
 `None` | `()`
 `int` | `i32`
 `np.int32` | `i32`
@@ -338,6 +327,23 @@ def use_modulo(f: Annotated[Callable[[int], int], "Bound<'py, PyAny>"], i: int) 
 ```
 
 See the examples in [test_callable.py](src/test/test_callable.py) for more detail.
+
+## Configuration
+
+### `pyo3` version
+
+The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default - and only supported version - is currently 0.28. Using a different version is not guaranteed to work, and will probably require overrides for all argument and return types.
+
+### Location of Extension Modules
+
+By default, compiled modules are placed in an `ext` subdirectory of your project's root. If this location is unsuitable,
+it can be overridden using the environment variable `XENOFORM_RS_EXTMODULE_ROOT`. NB avoid using characters in paths
+(e.g. space, hyphen) that would not be valid in a python module name.
+
+### Free-threaded Interpreter
+
+By default, if the interpreter is free-threaded, extension modules will be built without the GIL. This requires the extension code to be threadsafe. If xenoform detects an environment variable `XENOFORM_RS_DISABLE_FT`, free-threading is
+disabled.
 
 ## Troubleshooting
 
