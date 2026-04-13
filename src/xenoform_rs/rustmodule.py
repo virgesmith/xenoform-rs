@@ -31,6 +31,8 @@ pyo3 = {{ version = "{pyo3_version}", features = ["extension-module", "abi3-py31
 
 
 _MODULE_TEMPLATE = """
+#![allow(clippy::needless_lifetimes)]
+#![allow(clippy::extra_unused_lifetimes)]
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
 {modules}
@@ -50,7 +52,6 @@ use pyo3::prelude::*;
     {function_definitions}
 }}
 """
-
 
 _FUNCTION_DEFINITION_TEMPLATE = """
 {help}
@@ -142,7 +143,7 @@ class ModuleSpec:
             sorted(
                 _FUNCTION_DEFINITION_TEMPLATE.format(
                     function_name=f.qualified_name(),
-                    # lifetime="<'py>" if f.lifetime else "",
+                    lifetime="<'py>" if f.py else "",
                     function_body=f.body,
                     arg_defs=f.arg_annotations,
                     help=_format_help(f.help),

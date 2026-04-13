@@ -106,7 +106,7 @@ def test_user_type() -> None:
         process_x(X())
 
     @rust(py=False)
-    def process_x_annotated(_x: Annotated[X, "&Bound<'_, PyAny>"]) -> None:
+    def process_x_annotated(_x: Annotated[X, "&Bound<'py, PyAny>"]) -> None:
         "Ok(())"
 
     process_x_annotated(X())
@@ -133,8 +133,8 @@ def test_overridden_annotated_types() -> None:
     rusttype = translate_type(Annotated[int, "u32"])  # ty: ignore[invalid-argument-type]
     assert str(rusttype) == "u32"
 
-    rusttype = translate_type(Annotated[list[int], "&Bound<'_, PyList>"])  # ty: ignore[invalid-argument-type]
-    assert str(rusttype) == "&Bound<'_, PyList>"
+    rusttype = translate_type(Annotated[list[int], "&Bound<'py, PyList>"])  # ty: ignore[invalid-argument-type]
+    assert str(rusttype) == "&Bound<'py, PyList>"
 
 
 @rust(py=False)

@@ -182,7 +182,7 @@ def _get_module(module_name: str) -> ModuleType:
 @lru_cache  # limited function cache
 def _get_function(module_name: str, function_name: str) -> Callable[P, R]:
     module = _get_module(module_name)
-    logger.info(f"redirected {module_name}.{function_name[1:]} to compiled function {module.__name__}.{function_name}")
+    logger.info(f"redirected {function_name[1:]} to compiled function {module.__name__}.{function_name}")
     # return cast(Callable[P, R], getattr(module, function_name))
     return getattr(module, function_name)
 

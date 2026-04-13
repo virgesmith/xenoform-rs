@@ -1,23 +1,31 @@
 [project]
 name = "xenoform-rs"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.1.1"
+description = "Inlined rust functions"
 readme = "README.md"
 authors = [
     { name = "virgesmith", email = "andrew@friarswood.net" }
 ]
+license-files = ["LICENCE.md"]
 requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "itrx>=0.2.1",
     "numpy>=2.4.3",
     "pydantic-settings>=2.13.1",
 ]
 
-[project.scripts]
-xenoform-rs = "xenoform_rs:main"
+[project.urls]
+"Homepage" = "https://github.com/virgesmith/xenoform-rs"
+"Bug Tracker" = "https://github.com/virgesmith/xenoform-rs/issues"
 
 [build-system]
-requires = ["uv_build>=0.10.7,<0.11.0"]
+requires = ["uv_build>=0.11.0,<0.12.0"]
 build-backend = "uv_build"
 
 [dependency-groups]

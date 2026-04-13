@@ -78,10 +78,10 @@ def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple
             ret = str(rusttype)
         else:
             if arg_spec.varargs == var_name:
-                arg_def = f"{var_name}: &Bound<'_, PyTuple>"
+                arg_def = f"{var_name}: &Bound<'py, PyTuple>"
                 arg_annotation = f"*{var_name}"
             elif arg_spec.varkw == var_name:
-                arg_def = f"{var_name}: Option<&Bound<'_, PyDict>>"
+                arg_def = f"{var_name}: Option<&Bound<'py, PyDict>>"
                 arg_annotation = f"**{var_name}"
             else:
                 arg_def = f"{var_name}: {rusttype}"

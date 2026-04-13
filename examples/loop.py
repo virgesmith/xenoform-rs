@@ -12,24 +12,22 @@ from xenoform_rs import rust, rust_dependency
 def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
     """Cannot vectorise, since each value is dependent on the previous value"""
     result = pd.Series(index=data.index)
+    # Directly access the underlying numpy array for performance. pandas>=3 returns a read only array, so make it writeable
     result_np = result.to_numpy()
-    # pandas>=3 returns a read only array, so make it writeable
     result_np.flags.writeable = True
     current_value = 0.0
     for i, value in data.items():
         current_value = (current_value + value) * (1 - rate)
-        result_np[i] = current_value  # ty:ignore[invalid-assignment]
+        result_np[i] = current_value  # ty: ignore[invalid-assignment]
     return result
 
 
 @rust(
     dependencies=[rust_dependency("numpy", version="0.28")],
-    imports=[
-        "numpy::{PyArray1, PyArrayMethods}",
-        "pyo3::types::{PyDict, PyAnyMethods}",
-    ],
+    imports=["numpy::{PyArray1, PyArrayMethods}", "pyo3::types::{PyDict, PyAnyMethods}"],
     module_name="loop_rs",  # override as "loop" is a rust keyword
     profile={"strip": "symbols"},
+    verbose=True,
 )
 def calc_balances_rust(
     data: Annotated[pd.Series, "Bound<'py, PyAny>"], rate: float
@@ -56,9 +54,7 @@ def calc_balances_rust(
     let pd = py.import("pandas")?;
     let kwargs = PyDict::new(py);
     kwargs.set_item("index", data.getattr("index")?)?;
-    let result = pd.getattr("Series")?.call((result_np,), Some(&kwargs))?;
-
-    Ok(result)
+    pd.getattr("Series")?.call((result_np,), Some(&kwargs))
     """
 
 

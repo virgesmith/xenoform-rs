@@ -36,7 +36,7 @@ def test_signature_translation1() -> None:
         pass
 
     assert translate_function_signature(f4, py=True) == (
-        "(py: Python<'py>, args: &Bound<'_, PyTuple>) -> PyResult<bool>",
+        "(py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<bool>",
         ["*args"],
     )
 
@@ -44,7 +44,7 @@ def test_signature_translation1() -> None:
         pass
 
     assert translate_function_signature(f5, py=True) == (
-        "(py: Python<'py>, a: f64, b: &str, c: bool, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<i32>",
+        "(py: Python<'py>, a: f64, b: &str, c: bool, kwargs: Option<&Bound<'py, PyDict>>) -> PyResult<i32>",
         ["a", "*", "b", "c", "**kwargs"],
     )
 

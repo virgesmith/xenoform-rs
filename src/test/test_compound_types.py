@@ -13,7 +13,7 @@ def test_translate_compound_types() -> None:
         translate_type(int | float | None)  # ty:ignore[invalid-argument-type]
     assert str(translate_type(int | None)) == "Option<i32>"  # ty: ignore[invalid-argument-type]
     assert str(translate_type(Annotated[int | float, "f64"])) == "f64"  # ty: ignore[invalid-argument-type]
-    assert str(translate_type(Annotated[int | None, "&Bound<'_, PyAny>"])) == "&Bound<'_, PyAny>"  # ty: ignore[invalid-argument-type]
+    assert str(translate_type(Annotated[int | None, "&Bound<'py, PyAny>"])) == "&Bound<'py, PyAny>"  # ty: ignore[invalid-argument-type]
 
 
 @rust(py=False)
