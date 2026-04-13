@@ -87,7 +87,7 @@ class RustTypeTree:
         ):
             raise RustTypeError(
                 "Variant types other than `T | None` are not supported, use an override to a generic "
-                'python type e.g. `Annotated[int | str, "&Bound<\'_, PyAny>"]` or coerce to a single rust type '
+                'python type e.g. `Annotated[int | str, "&Bound<\'py, PyAny>"]` or coerce to a single rust type '
                 'e.g. `Annotated[int | float, "f64"]`.'
             )
 
