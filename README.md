@@ -310,6 +310,20 @@ The only type mapped to something mutable is `npt.NDArray` (`PyReadonlyArrayDyn`
 `list`, `set` or `bytearray` override to the corresponding pyo3 type, e.g. `PyList` (see
 [test_inplace.py](src/test/test_inplace.py)).
 
+The defaults can be overridden if necessary using the `Annotated` type, e.g.:
+
+```py
+@rust(py=False)
+def fibonacci(n: Annotated[int, "u64"]) -> Annotated[int, "u64"]
+    ...
+```
+
+Note:
+
+- return types are wrapped in `PyResult<>` allowing for exceptions to be raised via `Err(...)`. See e.g.
+[test_slice.py](src/test/test_slice.py)
+- any `&Bound<...>` pyo3 type in the return value (even overridden) will have the reference stripped.
+
 ## Callable Types
 
 Passing and returning functions to and from rust is supported, and they can be used interchangeably with python functions

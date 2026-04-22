@@ -109,7 +109,7 @@ def test_signature_translation2() -> None:
         ""
 
     assert translate_function_signature(f12, py=False) == (
-        "(some: bool) -> PyResult<Option<&Bound<'py, PyDict>>>",
+        "(some: bool) -> PyResult<Option<Bound<'py, PyDict>>>",
         ["some"],
     )
 
