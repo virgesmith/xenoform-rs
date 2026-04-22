@@ -97,7 +97,10 @@ def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple
     if kw_only is not None:
         arg_annotations.insert(kw_only, "*")
 
-    return f"({', '.join(arg_defs)})" + (f" -> PyResult<{ret}>" if ret else ""), arg_annotations
+    # strip reference from return types
+    return f"({', '.join(arg_defs)})" + (
+        f" -> PyResult<{ret.replace('&Bound', 'Bound')}>" if ret else ""
+    ), arg_annotations
 
 
 def rustfmt(code: str) -> str:

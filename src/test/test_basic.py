@@ -91,7 +91,7 @@ def test_signature_translation2() -> None:
         ""
 
     assert translate_function_signature(f10, py=True) == (
-        "(py: Python<'py>, a: (i32, (i32, f64)), value: Bound<'py, PyCFunction>) -> PyResult<bool>",
+        "(py: Python<'py>, a: (i32, (i32, f64)), value: &Bound<'py, PyCFunction>) -> PyResult<bool>",
         ["a", "*", "value"],
     )
 

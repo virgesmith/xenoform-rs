@@ -7,7 +7,7 @@ from xenoform_rs import rust
 
 
 @rust(py=False, imports=["pyo3::types::PyList"])
-def modify_list(lst: Annotated[list[int], "Bound<'py, PyList>"]) -> None:
+def modify_list(lst: Annotated[list[int], "&Bound<'py, PyList>"]) -> None:
     """
     lst.append(0)?;
     lst.set_item(0, 5)?;
@@ -16,7 +16,7 @@ def modify_list(lst: Annotated[list[int], "Bound<'py, PyList>"]) -> None:
 
 
 @rust(py=False, imports=["pyo3::types::PyDict"])
-def modify_dict(d: Annotated[dict[int, int], "Bound<'py, PyDict>"]) -> None:
+def modify_dict(d: Annotated[dict[int, int], "&Bound<'py, PyDict>"]) -> None:
     """
     d.set_item(0, 4)?;
     d.set_item(1, 2)?;
@@ -25,7 +25,7 @@ def modify_dict(d: Annotated[dict[int, int], "Bound<'py, PyDict>"]) -> None:
 
 
 @rust(py=False, imports=["pyo3::types::PySet"])
-def modify_set(s: Annotated[set[int], "Bound<'py, PySet>"]) -> None:
+def modify_set(s: Annotated[set[int], "&Bound<'py, PySet>"]) -> None:
     """
     s.add(0)?;
     s.add(1)?;

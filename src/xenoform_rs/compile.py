@@ -54,7 +54,7 @@ module = importlib.util.module_from_spec(spec)
 sys.modules["{module_name}"] = module
 spec.loader.exec_module(module)
 print(module.__checksum__)
-    """
+"""
 
 
 # need to load module in a subprocess to check its up-to-date to avoid polluting sys.modules
