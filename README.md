@@ -61,6 +61,8 @@ rust type e.g. `Annotated[int | float, "f64"]`.
 - no support currently for linking to external prebuilt binaries
 - due to restrictions arising from linguistic differences, xenoform-rs will likely never be as functionally complete
 than its C++ sister, [xenoform](https://pypi.org/project/xenoform/)
+- if you build the modules then change to a different python version, or switch between GIL/freethreaded builds, rust
+modules will not be importable. A full rebuild is required, so deleting the extension module folder is recommended.
 
 ## Getting started
 

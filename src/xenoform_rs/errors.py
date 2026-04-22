@@ -16,3 +16,7 @@ class RustConfigError(XenoformRsError):
 
 class RustTypeError(XenoformRsError):
     pass
+
+
+class RustModuleError(XenoformRsError):
+    pass

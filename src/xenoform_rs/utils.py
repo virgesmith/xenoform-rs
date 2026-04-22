@@ -13,7 +13,8 @@ from typing import Any
 
 from itrx import Itr
 
-from xenoform_rs.errors import RustConfigError
+from xenoform_rs.config import get_config
+from xenoform_rs.errors import RustConfigError, RustModuleError
 from xenoform_rs.extension_types import translate_type
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple
     if kw_only is not None:
         arg_annotations.insert(kw_only, "*")
 
-    # strip reference from return types
+    # make return type a PyResult, stripping reference if necessary
     return f"({', '.join(arg_defs)})" + (
         f" -> PyResult<{ret.replace('&Bound', 'Bound')}>" if ret else ""
     ), arg_annotations
@@ -190,9 +191,15 @@ def load_rust_module(lib_path: Path, module_name: str) -> ModuleType:
     if spec is None or spec.loader is None:
         raise RustConfigError(f"Could not create module spec for {lib_path}")
 
-    module = module_from_spec(spec)
-    # It's crucial to add the module to sys.modules BEFORE executing its spec.
-    # PyO3's PyInit_ functions expect the module to be registered this way.
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
+    try:
+        module = module_from_spec(spec)
+        # It's crucial to add the module to sys.modules BEFORE executing its spec.
+        # PyO3's PyInit_ functions expect the module to be registered this way.
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        return module
+    except (ImportError, ValueError) as e:  # if the only difference is freethreading, a ValueError is thrown
+        raise RustModuleError(
+            "Failed to import rust module. This can happen if the python version has changed since the modules "
+            f"were built. A full rebuild is required. Try deleting the '{get_config().extmodule_root}' folder"
+        ) from e
