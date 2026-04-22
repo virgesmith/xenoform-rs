@@ -30,7 +30,7 @@ def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
 )
 def calc_balances_rust(
     data: Annotated[pd.Series, "&Bound<'py, PyAny>"], rate: float
-) -> Annotated[pd.Series, "&Bound<'py, PyAny>"]:  # ty: ignore[empty-body]
+) -> Annotated[pd.Series, "Bound<'py, PyAny>"]:  # ty: ignore[empty-body]
     """
     // extract numpy arrays from the series. Note input is i64, output is f64
     let data_obj = data.call_method0("to_numpy")?;

@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from xenoform_rs import rust
 
 
@@ -58,9 +60,59 @@ def test_frozenset() -> None:
     assert frozenset_length({1, 2, 3, 1}) == 3  # ty: ignore[invalid-argument-type] # noqa: B033
 
 
+@rust(py=False, imports=["std::collections::HashMap"])
+def return_dict() -> dict[str, int]:  # ty: ignore[empty-body]
+    """
+    let mut result = HashMap::<String, i32>::new();
+    result.insert("x".to_string(), 42);
+    Ok(result)
+    """
+
+
+def test_return_dict() -> None:
+    assert return_dict() == {"x": 42}
+
+
+@rust(py=False, imports=["std::collections::HashMap"])
+def return_optional_dict(some: bool) -> dict[str, int] | None:
+    """
+    if !some {
+        return Ok(None);
+    }
+    let mut result = HashMap::<String, i32>::new();
+    result.insert("x".to_string(), 42);
+    Ok(Some(result))
+    """
+
+
+def test_return_optional_dict() -> None:
+    assert return_optional_dict(False) is None
+    assert return_optional_dict(True) == {"x": 42}
+
+
+@rust(imports=["pyo3::types::PyDict"])
+def return_overridden_optional_dict(some: bool) -> Annotated[dict[str, int] | None, "Option<Bound<'py, PyDict>>"]:
+    """
+    if !some {
+        return Ok(None);
+    }
+    let result = PyDict::new(py);
+    result.set_item("x", 42)?;
+    Ok(Some(result))
+    """
+
+
+def test_return_overidden_optional_dict() -> None:
+    assert return_overridden_optional_dict(False) is None
+    assert return_overridden_optional_dict(True) == {"x": 42}
+
+
 if __name__ == "__main__":
     test_vector()
     test_set()
     test_dict()
     test_tuple()
     test_frozenset()
+    test_return_dict()
+    test_return_optional_dict()
+    test_return_overidden_optional_dict()

@@ -104,6 +104,15 @@ def test_signature_translation2() -> None:
         ["a"],
     )
 
+    # check ref stripped from return type even when overridden
+    def f12(some: bool) -> Annotated[dict[str, int] | None, "Option<&Bound<'py, PyDict>>"]:
+        ""
+
+    assert translate_function_signature(f12, py=False) == (
+        "(some: bool) -> PyResult<Option<&Bound<'py, PyDict>>>",
+        ["some"],
+    )
+
 
 @rust(py=False)
 def max(i: int, j: int) -> int:  # ty: ignore[empty-body]
