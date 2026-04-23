@@ -1,12 +1,10 @@
 name: Publish to PyPI
 
 on:
-  workflow_run:
-    workflows: [ "Lint and Test" ]
-    types:
-      - completed
-    branches:
-      - main
+  push:
+    tags:
+      # Publish on any tag starting with a `v`, e.g., v1.2.3
+      - v*
 
 jobs:
   deploy:
