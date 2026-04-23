@@ -27,10 +27,9 @@ def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
     imports=["numpy::{PyArray1, PyArrayMethods}", "pyo3::types::{PyDict, PyAnyMethods}"],
     module_name="loop_rs",  # override as "loop" is a rust keyword
     profile={"strip": "symbols"},
-    verbose=True,
 )
 def calc_balances_rust(
-    data: Annotated[pd.Series, "Bound<'py, PyAny>"], rate: float
+    data: Annotated[pd.Series, "&Bound<'py, PyAny>"], rate: float
 ) -> Annotated[pd.Series, "Bound<'py, PyAny>"]:  # ty: ignore[empty-body]
     """
     // extract numpy arrays from the series. Note input is i64, output is f64

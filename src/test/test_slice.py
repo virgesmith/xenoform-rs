@@ -33,7 +33,7 @@ def parse_slice(length: int, s: slice) -> list[int]:  # ty: ignore[empty-body]
 )
 def slice_shape(
     a: Annotated[npt.NDArray[np.float64], "Bound<'py, PyArrayDyn<f64>>"],
-    *indices: Annotated[int | slice | EllipsisType, "Bound<'py, PyAny>"],
+    *indices: Annotated[int | slice | EllipsisType, "&Bound<'py, PyAny>"],
 ) -> list[int]:  # ty: ignore[empty-body]
     """
     // `indices` arrives as a PyTuple containing the variadic arguments
@@ -50,7 +50,7 @@ def slice_shape(
 
 @rust(py=False, imports=["pyo3::exceptions::PyTypeError"])
 def explicit_ellipsis(
-    a: Annotated[int | slice | EllipsisType, "Bound<'py, PyAny>"],
+    a: Annotated[int | slice | EllipsisType, "&Bound<'py, PyAny>"],
 ) -> str:  # ty:ignore[empty-body]
     """
     // Ok(a.get_type().name()?)

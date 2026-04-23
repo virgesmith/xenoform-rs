@@ -15,19 +15,24 @@ def vector_sum(v: list[int]) -> int:  # ty: ignore[empty-body]
     """
 ```
 
-When Python loads this module, all functions using this decorator have their function signatures translated to rust
-and the source for an extension module with python bindings is generated. The first time any function is called, the
-module is built, the attribute corresponding to the (empty) Python function is replaced with the rust implementation in
-the module.
+Here's what happens automatically when you import a module with `@rust`-decorated functions:
 
-Subsequent calls to these functions incur minimal overhead, as the attribute corresponding to the (dummy) python function
-already points to the rust implementation.
+**First call or after code changes:**
 
-Each module stores a hash of its source code (and Cargo.toml). Modules are checked on load and automatically rebuilt
-when any changes are detected.
+1. Rust source code is generated - your Python type signatures are translated to Rust types
+2. The extension module is compiled
+3. Your decorated Python functions are replaced with their compiled Rust implementations
 
-By default, the binaries, source code and build logs for the compiled modules can be found in the `ext` subfolder (this
-location can be changed).
+**Subsequent calls:**
+The Rust functions execute directly with minimal overhead.
+
+**Change detection:**
+Each module stores a hash of its source code and Cargo.toml. On import, xenoform-rs checks these hashes and
+automatically rebuilds the module if any changes are detected.
+
+**Where files go:**
+By default, the `ext` subfolder contains binaries, generated source code, and build logs. To change this location see
+[below](#location-of-extension-modules).
 
 ## Features
 
@@ -44,7 +49,7 @@ NB type annotations for these types are still useful for python type checkers. S
 
 Caveats & points to note:
 
-- callable types (more detail [here](#callable-types)):
+- callable types (more detail [below](#callable-types)):
     - only generic (untyped) functions/closures are supported.
     - a type override is necessary to pass functions as arguments. The default works for return values.
 - complex: 128 bit support only (i.e. not `np.complex64`)
@@ -56,6 +61,8 @@ rust type e.g. `Annotated[int | float, "f64"]`.
 - no support currently for linking to external prebuilt binaries
 - due to restrictions arising from linguistic differences, xenoform-rs will likely never be as functionally complete
 than its C++ sister, [xenoform](https://pypi.org/project/xenoform/)
+- if you build the modules then change to a different python version, or switch between GIL/freethreaded builds, rust
+modules will not be importable. A full rebuild is required, so deleting the extension module folder is recommended.
 
 ## Getting started
 
@@ -147,7 +154,7 @@ such objects via their python API:
     profile={"strip": "symbols"},
 )
 def calc_balances_rust(
-    data: Annotated[pd.Series, "Bound<'py, PyAny>"], rate: float
+    data: Annotated[pd.Series, "&Bound<'py, PyAny>"], rate: float
 ) -> Annotated[pd.Series, "Bound<'py, PyAny>"]:  # ty: ignore[empty-body]
     """
 ```
@@ -182,7 +189,6 @@ def calc_balances_rust(
 ```
 
 Performance comparison:
-
 
 N | py (ms) | rust (ms) | speedup
 -:|--------:|----------:|-----------:
@@ -277,26 +283,26 @@ Python | rust
 `float` | `f64`
 `np.float32` | `f32`
 `np.float64` | `f64`
-`complex` | `Bound<'py, PyComplex>`
-`np.complex128` | `Bound<'py, PyComplex>`
+`complex` | `&Bound<'py, PyComplex>`
+`np.complex128` | `&Bound<'py, PyComplex>`
 `str` | `String`
 `np.ndarray` | `PyReadonlyArrayDyn`
 `bytes` | `&'py [u8]`
-`bytearray` | `Bound<'py, PyByteArray`
+`bytearray` | `&Bound<'py, PyByteArray`
 `list` | `Vec`
 `set` | `HashSet`
 `frozenset` | `HashSet`
 `dict` | `HashMap`
 `tuple` | `(...)`
-`slice` | `Bound<'py, PySlice>`
-`Any` | `Bound<'py, PyAny>`
-`Self` | `Bound<'py, PyAny>`
-`type` | `Bound<'py, PyType>`
+`slice` | `&Bound<'py, PySlice>`
+`Any` | `&Bound<'py, PyAny>`
+`Self` | `&Bound<'py, PyAny>`
+`type` | `&Bound<'py, PyType>`
 `*args` | `&Bound<'py, PyTuple>`
 `**kwargs` | `Option<&Bound<'py, PyDict>>`
 `T \| None` | `Option<T>`
-`Callable` | `Bound<'py, PyCFunction>`
-`...` | `Bound<'py, PyEllipsis>`
+`Callable` | `&Bound<'py, PyCFunction>`
+`...` | `&Bound<'py, PyEllipsis>`
 
 Thus, `dict[str, list[float]]` becomes - by default - `HashMap<String, Vec<f64>>`.
 
@@ -304,25 +310,36 @@ The only type mapped to something mutable is `npt.NDArray` (`PyReadonlyArrayDyn`
 `list`, `set` or `bytearray` override to the corresponding pyo3 type, e.g. `PyList` (see
 [test_inplace.py](src/test/test_inplace.py)).
 
-## Callable Types
-
-Passing and returning functions to and from rust is supported, and they can be used interchangeably with python functions
-and lambdas. Annotate types using `Callable[...]` - this gets mapped to `Bound<'py, PyCFunction>`
-
-When returning functions, note that pyo3's `PyCFunction` type does not intrinsically contain information about the
-function's argument and return types.
-
-doesn't allow for
-python functions/lambdas to be passed into rust. In this case override to `Bound<'py, PyAny>` (`PyAnyMethods` implement the call... traits).
-
-However, When passing function (either python or rust) arguments, the generic override `Bound<'py, PyAny>` should be
-used - it has the necessary API - e.g.:
+The defaults can be overridden if necessary using the `Annotated` type, e.g.:
 
 ```py
 @rust(py=False)
-def use_modulo(f: Annotated[Callable[[int], int], "Bound<'py, PyAny>"], i: int) -> int:
+def fibonacci(n: Annotated[int, "u64"]) -> Annotated[int, "u64"]
+    ...
+```
+
+Note:
+
+- return types are wrapped in `PyResult<>` allowing for exceptions to be raised via `Err(...)`. See e.g.
+[test_slice.py](src/test/test_slice.py)
+- any `&Bound<...>` pyo3 type in the return value (even overridden) will have the reference stripped.
+
+## Callable Types
+
+Passing and returning functions to and from rust is supported, and they can be used interchangeably with python functions
+and lambdas.
+
+Annotate types using `Callable[...]` - this gets mapped to `Bound<'py, PyCFunction>`. When returning functions, note that pyo3's `PyCFunction` type does not intrinsically contain information about the function's argument and return types.
+
+For function arguments, the default mapping (to `Bound<'py, PyCFunction>`) does not support python functions/lambdas.
+For this reason, use the generic override `&Bound<'py, PyAny>` (`PyAnyMethods` implement the call... traits). This
+example will work with both python and rust functions:
+
+```py
+@rust(py=False)
+def use_modulo(func: Annotated[Callable[[int], int], "&Bound<'py, PyAny>"], i: int) -> int:
     """
-    f.call1((i,))?.extract::<i32>()
+    func.call1((i,))?.extract::<i32>()
     """
 ```
 

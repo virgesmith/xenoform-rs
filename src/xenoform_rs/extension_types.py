@@ -7,6 +7,9 @@ import numpy as np
 
 from xenoform_rs.errors import RustTypeError
 
+# NOTE return types:
+# - are wrapped in a PyResult<>
+# - Bound types have their reference stripped
 DEFAULT_TYPE_MAPPING = {
     None: "()",
     int: "i32",
@@ -16,25 +19,25 @@ DEFAULT_TYPE_MAPPING = {
     float: "f64",
     np.float32: "f32",
     np.float64: "f64",
-    complex: "Bound<'py, PyComplex>",
+    complex: "&Bound<'py, PyComplex>",
     # np.complex64: "PyComplex", single precision not supported
-    np.complex128: "Bound<'py, PyComplex>",
+    np.complex128: "&Bound<'py, PyComplex>",
     np.ndarray: "PyReadonlyArrayDyn",
     str: "String",  # or "&'py str"?
     bytes: "&'py [u8]",  # or Vec<u8>?
-    bytearray: "Bound<'py, PyByteArray>",  # default type allows in-place modification
+    bytearray: "&Bound<'py, PyByteArray>",  # default type allows in-place modification
     list: "Vec",
     set: "HashSet",
     frozenset: "HashSet",
     dict: "HashMap",
     tuple: "tuple_placeholder",  # this gets replaced with rust's tuple syntax ... ellipsis not supported here
-    slice: "Bound<'py, PySlice>",
-    Any: "Bound<'py, PyAny>",
-    Self: "Bound<'py, PyAny>",
-    type: "Bound<'py, PyType>",
+    slice: "&Bound<'py, PySlice>",
+    Any: "&Bound<'py, PyAny>",
+    Self: "&Bound<'py, PyAny>",
+    type: "&Bound<'py, PyType>",
     UnionType: "Option",
-    Callable: "Bound<'py, PyCFunction>",  # override function arguments to Bound<'py, PyAny> to pass python functions/lambdas to rust
-    EllipsisType: "Bound<'py, PyEllipsis>",
+    Callable: "&Bound<'py, PyCFunction>",  # override function arguments to Bound<'py, PyAny> to pass python functions/lambdas to rust
+    EllipsisType: "&Bound<'py, PyEllipsis>",
 }
 
 
@@ -102,9 +105,9 @@ class RustTypeTree:
         return t
 
 
-def parse_annotation(origin: type) -> tuple[type, dict[str, str]]:
+def parse_annotation(origin: type) -> tuple[type, str | None]:
     """
-    Extract content from Annotation, if present. optional 2nd return value can bbe used as kwargs
+    Extract content from Annotation, if present. Optional 2nd return value is the type override
     """
     t = get_origin(origin)
     if t is None and get_args(origin):
@@ -113,9 +116,9 @@ def parse_annotation(origin: type) -> tuple[type, dict[str, str]]:
         base, *extras = get_args(origin)
         assert len(extras) == 1, "one and only one annotation must be specified"
         if isinstance(extras[0], str):
-            return base, {"override": extras[0]}
+            return base, extras[0]
         raise TypeError(f"Unexpected extra for {base}: {extras[0]}({type(extras[0])})")
-    return origin, {}
+    return origin, None
 
 
 def translate_type(t: type) -> RustTypeTree:
@@ -124,5 +127,5 @@ def translate_type(t: type) -> RustTypeTree:
     using the default mappings defined in default_type_mapping
     """
 
-    base_type, extras = parse_annotation(t)
-    return RustTypeTree(PyTypeTree(base_type), **extras)
+    base_type, override = parse_annotation(t)
+    return RustTypeTree(PyTypeTree(base_type), override=override)

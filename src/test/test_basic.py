@@ -91,7 +91,7 @@ def test_signature_translation2() -> None:
         ""
 
     assert translate_function_signature(f10, py=True) == (
-        "(py: Python<'py>, a: (i32, (i32, f64)), value: Bound<'py, PyCFunction>) -> PyResult<bool>",
+        "(py: Python<'py>, a: (i32, (i32, f64)), value: &Bound<'py, PyCFunction>) -> PyResult<bool>",
         ["a", "*", "value"],
     )
 
@@ -102,6 +102,15 @@ def test_signature_translation2() -> None:
     assert translate_function_signature(f11, py=False) == (
         "(a: ((i32, Option<bool>), Option<f64>)) -> PyResult<()>",
         ["a"],
+    )
+
+    # check ref stripped from return type even when overridden
+    def f12(some: bool) -> Annotated[dict[str, int] | None, "Option<&Bound<'py, PyDict>>"]:
+        ""
+
+    assert translate_function_signature(f12, py=False) == (
+        "(some: bool) -> PyResult<Option<Bound<'py, PyDict>>>",
+        ["some"],
     )
 
 

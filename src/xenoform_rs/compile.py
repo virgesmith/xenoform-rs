@@ -54,7 +54,7 @@ module = importlib.util.module_from_spec(spec)
 sys.modules["{module_name}"] = module
 spec.loader.exec_module(module)
 print(module.__checksum__)
-    """
+"""
 
 
 # need to load module in a subprocess to check its up-to-date to avoid polluting sys.modules
@@ -108,8 +108,8 @@ def _check_build_fetch_module_impl(
 
     # assume exists and up-to-date
     exists, outdated = True, False
-    if not module_checksum:
-        logger.info(f"module {extmodule_root.name}.{ext_name}.{module_name} not found")
+    if module_checksum is None:
+        logger.info(f"module {extmodule_root.name}.{ext_name}.{module_name} not found or not importable")
         exists = False
     elif module_checksum != hashval:
         logger.info(f"module is outdated ({hashval})")

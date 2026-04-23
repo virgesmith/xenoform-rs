@@ -113,17 +113,17 @@ def test_user_type() -> None:
 
 
 def test_parse_annotation() -> None:
-    t, q = parse_annotation(int)
+    t, override = parse_annotation(int)
     assert t is int
-    assert q == {}
+    assert override is None
 
-    t, q = parse_annotation(Annotated[int, "i64"])  # ty: ignore[invalid-argument-type]
+    t, override = parse_annotation(Annotated[int, "i64"])  # ty: ignore[invalid-argument-type]
     assert t is int
-    assert q == {"override": "i64"}
+    assert override == "i64"
 
-    t, q = parse_annotation(Annotated[int, "u32"])  # ty: ignore[invalid-argument-type]
+    t, override = parse_annotation(Annotated[int, "u32"])  # ty: ignore[invalid-argument-type]
     assert t is int
-    assert q == {"override": "u32"}
+    assert override == "u32"
 
     with pytest.raises(TypeError):
         parse_annotation(Annotated[int, 42])  # ty: ignore[invalid-argument-type]

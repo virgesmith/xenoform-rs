@@ -55,7 +55,7 @@ def modulo_py(n: int) -> Callable[[int], int]:
 
 
 @rust(py=False)
-def use_modulo(f: Annotated[Callable[[int], int], "Bound<'py, PyAny>"], i: int) -> int:  # ty: ignore[empty-body]
+def use_modulo(f: Annotated[Callable[[int], int], "&Bound<'py, PyAny>"], i: int) -> int:  # ty: ignore[empty-body]
     """
     f.call1((i,))?.extract::<i32>()
     """
@@ -66,7 +66,7 @@ def rust_py(f: Callable[[int], int], i: int) -> int:
 
 
 @rust()
-def use_round_sign(f: Annotated[Callable[[float, bool], int], "Bound<'py, PyAny>"], x: float) -> int:  # ty: ignore[empty-body]
+def use_round_sign(f: Annotated[Callable[[float, bool], int], "&Bound<'py, PyAny>"], x: float) -> int:  # ty: ignore[empty-body]
     """
     let args = (x, true).into_pyobject(py)?;
     f.call(args, None)?.extract::<i32>()
