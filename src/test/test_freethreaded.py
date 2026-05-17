@@ -11,7 +11,7 @@ from xenoform_rs.config import get_config
 
 def build_freethreaded() -> bool:
     """Return whether interpreter is free-threaded AND free-threading hasn't been manually overridden"""
-    if sys.version_info[1] < 13:
+    if not hasattr(sys, "_is_gil_enabled"):
         return False
     return not (sys._is_gil_enabled() or get_config().disable_ft is not None)
 

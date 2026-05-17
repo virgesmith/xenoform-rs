@@ -5,13 +5,13 @@ import subprocess
 import sys
 from collections import defaultdict
 from collections.abc import Callable
-from functools import cache, lru_cache, wraps
+from functools import lru_cache, wraps
 from pathlib import Path
 from types import ModuleType
 from typing import ParamSpec, TypeVar
 
 from xenoform_rs.config import get_config
-from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError
+from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError, RustTypeError
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import get_function_scope, get_lib_path, load_rust_module, translate_function_signature
 
@@ -24,6 +24,62 @@ extmodule_root = get_config().extmodule_root
 sys.path.append(str(extmodule_root))
 
 _module_registry: dict[str, ModuleSpec] = defaultdict(ModuleSpec)
+
+_RUST_KEYWORDS = frozenset(
+    {
+        "as",
+        "break",
+        "const",
+        "continue",
+        "crate",
+        "else",
+        "enum",
+        "extern",
+        "false",
+        "fn",
+        "for",
+        "if",
+        "impl",
+        "in",
+        "let",
+        "loop",
+        "match",
+        "mod",
+        "move",
+        "mut",
+        "pub",
+        "ref",
+        "return",
+        "self",
+        "Self",
+        "static",
+        "struct",
+        "super",
+        "trait",
+        "true",
+        "type",
+        "unsafe",
+        "use",
+        "where",
+        "while",
+        "async",
+        "await",
+        "dyn",
+        "abstract",
+        "become",
+        "box",
+        "do",
+        "final",
+        "macro",
+        "override",
+        "priv",
+        "typeof",
+        "unsized",
+        "virtual",
+        "yield",
+        "try",
+    }
+)
 
 
 def _get_cargo_env() -> dict[str, str]:
@@ -94,6 +150,38 @@ def _check_annotations[**P, R](func: Callable[P, R]) -> None:
 
     if missing_annotations:
         raise AnnotationError(f"Function {func.__name__} has missing annotations: {missing_annotations}")  # ty:ignore[unresolved-attribute]
+
+
+def _validate_signature[**P, R](func: Callable[P, R], py: bool) -> tuple[str, list[str]]:
+    """Validate annotations and translate to Rust signature, aggregating all errors before raising."""
+    annotation_err: str | None = None
+    type_err: RustTypeError | None = None
+
+    try:
+        _check_annotations(func)
+    except AnnotationError as e:
+        annotation_err = str(e)
+
+    try:
+        sig, args = translate_function_signature(func, py=py)
+    except RustTypeError as e:
+        type_err = e
+        sig, args = "", []
+
+    if annotation_err and type_err:
+        raise AnnotationError(f"{annotation_err}\n{type_err}")
+    if annotation_err:
+        raise AnnotationError(annotation_err)
+    if type_err:
+        raise type_err
+    return sig, args
+
+
+def _validate_module_name(module_name: str) -> None:
+    if not module_name.isidentifier():
+        raise RustConfigError(f"Invalid module name: '{module_name}'. Use only alphanumeric characters and '_'")
+    if module_name in _RUST_KEYWORDS:
+        raise RustConfigError(f"Invalid module name: '{module_name}' is a Rust reserved word")
 
 
 def _check_build_fetch_module_impl(
@@ -174,14 +262,14 @@ def _check_build_fetch_module_impl(
     return load_rust_module(lib_path, module_name)
 
 
-@cache  # unlimited module cache
+@lru_cache(maxsize=256)
 def _get_module(module_name: str) -> ModuleType:
     module = _check_build_fetch_module_impl(module_name, _module_registry[module_name])
     logger.info(f"imported compiled module {module.__name__}")
     return module
 
 
-@lru_cache  # limited function cache
+@lru_cache(maxsize=256)
 def _get_function(module_name: str, function_name: str) -> Callable[P, R]:
     module = _get_module(module_name)
     logger.info(f"redirected {function_name[1:]} to compiled function {module.__name__}.{function_name}")
@@ -220,15 +308,11 @@ def rust(
         """Decorator to compile a Python function to Rust and replace it with the compiled version."""
 
         scope = get_function_scope(func)
-
-        _check_annotations(func)
-
-        sig, args = translate_function_signature(func, py=py)
+        sig, args = _validate_signature(func, py=py)
 
         nonlocal module_name
         module_name = module_name or f"{Path(inspect.getfile(func)).stem}"
-        if not module_name.isidentifier():
-            raise RustConfigError(f"Invalid module name: {module_name}. Use only alphanumeric characters and '_'")
+        _validate_module_name(module_name)
 
         function_body = sig + " {" + (func.__doc__ or "") + "}"
 
