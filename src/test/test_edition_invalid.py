@@ -1,10 +1,10 @@
 import pytest
 
-from xenoform_rs import RustConfigError, rust
+from xenoform_rs import CompilationError, rust
 
 
 def test_edition_invalid() -> None:
-    with pytest.raises(RustConfigError):
+    with pytest.raises(CompilationError):
 
         @rust(edition="2204")
         def f(i: int) -> bool:  # ty: ignore[empty-body]
