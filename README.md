@@ -103,12 +103,13 @@ if __name__ == "__main__":
 
 name | type | default | description
 ---- | ---- | ------- | -----------
-`py` | `bool` | `True` | Pass the python context as the first argument. Necessary when (e.g.) creating python objects.
-`dependencies` | `list[str] \| None` | `None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.28")]`.
-`imports` | `list[str] \| None` | `None` | Additional imports, e.g. `imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"]`
+`py` | `bool` | `True` | Pass the python context as the first argument. Necessary when (e.g.) creating python objects
+`dependencies` | `list[str] \| None` | `None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.28")]`
 `modules` | `list[Path \| str] \| None` | `None` | Sources for additional modules
-`edition` | `str` | `"2024"` | The rust edition.
+`imports` | `list[str] \| None` | `None` | Additional imports, e.g. `imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"]`
+`module_name` | `str \| None` | `None` | Override the default one-to-one mapping between python files and rust modules, e.g. when the python source file is a reserved rust keyword
 `profile` | `dict[str, str] \| None` | `None` | Overrides to (release mode) [profile](https://doc.rust-lang.org/cargo/reference/profiles.html), e.g. optimisation level, strip symbols, etc.
+`edition` | `str` | `"2024"` | The rust edition
 `help` | `str \| None` | `None` | Docstring for the function
 `verbose` | `bool` | `False` | enable debug logging
 

@@ -181,7 +181,10 @@ def _validate_module_name(module_name: str) -> None:
     if not module_name.isidentifier():
         raise RustConfigError(f"Invalid module name: '{module_name}'. Use only alphanumeric characters and '_'")
     if module_name in _RUST_KEYWORDS:
-        raise RustConfigError(f"Invalid module name: '{module_name}' is a Rust reserved word")
+        raise RustConfigError(
+            f"Invalid module name: '{module_name}' is a Rust reserved word, "
+            "override with module_name=... in the rust decorator"
+        )
 
 
 def _check_build_fetch_module_impl(
