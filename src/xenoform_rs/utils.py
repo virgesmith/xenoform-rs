@@ -106,11 +106,7 @@ def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple
 
 def rustfmt(code: str) -> str:
     """Use rustfmt to prettify code"""
-    try:
-        result = subprocess.run(["rustfmt"], input=code, capture_output=True, text=True, check=True)
-    except subprocess.CalledProcessError as e:
-        logger.warning(f"rustfmt failed: {e}. lib.rs will be unformatted")
-        return code
+    result = subprocess.run(["rustfmt"], input=code, capture_output=True, text=True, timeout=30)
     if result.returncode != 0:
         logger.warning(f"rustfmt failed with stderr: {result.stderr}. lib.rs will be unformatted")
         return code

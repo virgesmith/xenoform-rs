@@ -45,13 +45,14 @@ def _get_cargo_env() -> dict[str, str]:
 
 
 _CHECKSUM_SCRIPT = """
-import sys
-import importlib.util
+import os, sys, importlib.util
 from importlib.machinery import ExtensionFileLoader
-loader = ExtensionFileLoader("{module_name}", "{module_path}")
-spec = importlib.util.spec_from_loader("{module_name}", loader)
+module_name = os.environ["_XENOFORM_MODULE_NAME"]
+module_path = os.environ["_XENOFORM_MODULE_PATH"]
+loader = ExtensionFileLoader(module_name, module_path)
+spec = importlib.util.spec_from_loader(module_name, loader)
 module = importlib.util.module_from_spec(spec)
-sys.modules["{module_name}"] = module
+sys.modules[module_name] = module
 spec.loader.exec_module(module)
 print(module.__checksum__)
 """
@@ -61,11 +62,16 @@ print(module.__checksum__)
 # otherwise if a rebuild is done, the module is already loaded and the changes are not picked up
 # importlib.reload doesn't work here, the old module remains in memory
 def _get_module_checksum(module_path: Path, module_name: str) -> str | None:
+    env = os.environ.copy()
+    env["_XENOFORM_MODULE_NAME"] = module_name
+    env["_XENOFORM_MODULE_PATH"] = str(module_path)
     p = subprocess.run(
-        ["python", "-c", _CHECKSUM_SCRIPT.format(module_path=module_path, module_name=module_name)],
+        ["python", "-c", _CHECKSUM_SCRIPT],
         check=False,
         capture_output=True,
         text=True,
+        env=env,
+        timeout=30,
     )
     if p.returncode == 0:
         return p.stdout.strip()
@@ -139,27 +145,23 @@ def _check_build_fetch_module_impl(
 
         logger.info(f"wrote {module_dir}/Cargo.toml")
         logger.info(f"building {extmodule_root.name}.{ext_name}.{module_name}...")
-        try:
-            build_log = module_dir / "build.log"
+        build_log = module_dir / "build.log"
 
-            with build_log.open("w") as fd:
-                compile_result = subprocess.run(
-                    ["cargo", "build", "--release"],
-                    cwd=module_dir,
-                    check=True,
-                    stdout=fd,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    env=_get_cargo_env(),
-                )
-            if compile_result.returncode != 0:
-                raise CompilationError(
-                    f"Cargo build failed for module '{ext_name}' with return code {compile_result.returncode}. See {build_log} for details."
-                )
-        except subprocess.CalledProcessError as e:
-            raise RustConfigError(
-                f"Cargo build command error while building '{ext_name}'. See {build_log} for details."
-            ) from e
+        with build_log.open("w") as fd:
+            compile_result = subprocess.run(
+                ["cargo", "build", "--release"],
+                cwd=module_dir,
+                check=False,
+                stdout=fd,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env=_get_cargo_env(),
+                timeout=300,
+            )
+        if compile_result.returncode != 0:
+            raise CompilationError(
+                f"Cargo build failed for module '{ext_name}' with return code {compile_result.returncode}. See {build_log} for details."
+            )
 
         logger.info(f"built {extmodule_root.name}.{ext_name}.{module_name}")
 
