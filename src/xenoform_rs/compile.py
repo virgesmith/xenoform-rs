@@ -20,9 +20,6 @@ logger = logging.getLogger(__name__)
 
 extmodule_root = get_config().extmodule_root
 
-# ensure the module directory is available to Python
-sys.path.append(str(extmodule_root))
-
 _module_registry: dict[str, ModuleSpec] = defaultdict(ModuleSpec)
 
 _RUST_KEYWORDS = frozenset(
@@ -122,7 +119,7 @@ def _get_module_checksum(module_path: Path, module_name: str) -> str | None:
     env["_XENOFORM_MODULE_NAME"] = module_name
     env["_XENOFORM_MODULE_PATH"] = str(module_path)
     p = subprocess.run(
-        ["python", "-c", _CHECKSUM_SCRIPT],
+        [sys.executable, "-c", _CHECKSUM_SCRIPT],
         check=False,
         capture_output=True,
         text=True,
@@ -195,6 +192,9 @@ def _check_build_fetch_module_impl(
 
     module_dir = extmodule_root / ext_name
     module_dir.mkdir(exist_ok=True, parents=True)
+
+    if str(extmodule_root) not in sys.path:
+        sys.path.append(str(extmodule_root))
 
     module, code, hashval = module_spec.make_source(module_name)
 
@@ -301,11 +301,11 @@ def rust(
 
     if verbose:
         logging.basicConfig(
-            format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s", level=logging.INFO, datefmt="%H:%M:%S"
+            format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
+            level=logging.INFO,
+            datefmt="%H:%M:%S",
+            force=True,
         )
-
-    else:
-        logging.basicConfig(level=logging.WARNING)
 
     def register_function(func: Callable[P, R]) -> Callable[P, R]:
         """Decorator to compile a Python function to Rust and replace it with the compiled version."""
