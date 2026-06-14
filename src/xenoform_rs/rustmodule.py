@@ -1,10 +1,7 @@
 from dataclasses import dataclass, field
 from hashlib import sha256
-from operator import add
 from pathlib import Path
 from typing import Self
-
-from itrx import Itr
 
 from xenoform_rs import __version__ as version
 from xenoform_rs.config import get_config
@@ -65,7 +62,7 @@ fn {function_name}<'py>{function_body}
 def _format_help(help: str | None) -> str:
     if not help:
         return ""
-    return Itr((help).split("\n")).map(lambda line: f"/// {line}").intersperse("\n").reduce(add)
+    return "\n".join(f"/// {line}" for line in help.split("\n"))
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,7 @@ from xenoform_rs.errors import RustTypeError
 # NOTE return types:
 # - are wrapped in a PyResult<>
 # - Bound types have their reference stripped
-DEFAULT_TYPE_MAPPING = {
+DEFAULT_TYPE_MAPPING: dict[Any, str] = {
     None: "()",
     int: "i32",
     np.int32: "i32",
@@ -70,7 +70,7 @@ class RustTypeTree:
     """Mapped tree structure for Rust types"""
 
     def __init__(self, tree: PyTypeTree, *, override: str | None = None) -> None:
-        self.type = DEFAULT_TYPE_MAPPING.get(tree.type)  # ty: ignore[invalid-argument-type]
+        self.type = DEFAULT_TYPE_MAPPING.get(tree.type)
         if not self.type and not override:
             raise RustTypeError(f"Don't know a Rust type for '{tree.type}' and no override provided")
         self.override = override
@@ -114,7 +114,8 @@ def parse_annotation(origin: type) -> tuple[type, str | None]:
         raise RustTypeError("Python types with no default mapping must be annotated with a type override")
     if t is Annotated:
         base, *extras = get_args(origin)
-        assert len(extras) == 1, "one and only one annotation must be specified"
+        if len(extras) != 1:
+            raise TypeError("one and only one annotation must be specified")
         if isinstance(extras[0], str):
             return base, extras[0]
         raise TypeError(f"Unexpected extra for {base}: {extras[0]}({type(extras[0])})")

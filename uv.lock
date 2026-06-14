@@ -75,10 +75,10 @@ wheels = [
 
 [[package]]
 name = "itrx"
-version = "0.2.2"
+version = "0.2.3"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7c/e3/8df043ad2cbcac5f5d6b865635503120defae2708cc0b0fcac314832a655/itrx-0.2.2-py3-none-any.whl", hash = "sha256:26aa9b464c7baa7459f3c721b26dd52316045359b7a0bac652fe42ae0a5c6c6a", size = 10972, upload-time = "2026-04-16T12:50:47.858Z" },
+    { url = "https://files.pythonhosted.org/packages/72/fb/d0ed78b93ca30ef4dc7696034a80d313a141ccf8b600383b157aa8d77100/itrx-0.2.3-py3-none-any.whl", hash = "sha256:c6b21fa81d89e6c1b3adb7216b242af233fc1db2e98f0f705a57ab0892429796", size = 10982, upload-time = "2026-05-17T12:08:02.622Z" },
 ]
 
 [[package]]
