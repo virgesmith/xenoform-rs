@@ -49,6 +49,18 @@ def test_tuple() -> None:
 
 
 @rust(py=False)
+def tuple_pairwise_sum(v: list[tuple[int, int]]) -> tuple[int, int]:  # ty: ignore[empty-body]
+    """
+    Ok(v.iter().fold((0, 0), |acc, t| (acc.0 + t.0, acc.1 + t.1)))
+    """
+
+
+def test_tuple_nested_and_returned() -> None:
+    assert tuple_pairwise_sum([(1, 2), (3, 4), (5, 6)]) == (9, 12)
+    assert tuple_pairwise_sum([]) == (0, 0)
+
+
+@rust(py=False)
 def frozenset_length(s: frozenset[int]) -> int:  # ty: ignore[empty-body]
     """
     Ok(s.len() as i32)
@@ -112,6 +124,7 @@ if __name__ == "__main__":
     test_set()
     test_dict()
     test_tuple()
+    test_tuple_nested_and_returned()
     test_frozenset()
     test_return_dict()
     test_return_optional_dict()

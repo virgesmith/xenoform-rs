@@ -30,7 +30,7 @@ DEFAULT_TYPE_MAPPING: dict[Any, str] = {
     set: "HashSet",
     frozenset: "HashSet",
     dict: "HashMap",
-    tuple: "tuple_placeholder",  # this gets replaced with rust's tuple syntax ... ellipsis not supported here
+    tuple: "(...)",  # sentinel: rendered with rust tuple syntax in RustTypeTree.__repr__ ... ellipsis not supported
     slice: "&Bound<'py, PySlice>",
     Any: "&Bound<'py, PyAny>",
     Self: "&Bound<'py, PyAny>",
@@ -97,6 +97,10 @@ class RustTypeTree:
     def __repr__(self) -> str:
         if self.override:
             return self.override
+        if self.type == DEFAULT_TYPE_MAPPING[tuple]:
+            inner = ", ".join(repr(t) for t in self.subtypes)
+            # single-element rust tuples require a trailing comma
+            return f"({inner},)" if len(self.subtypes) == 1 else f"({inner})"
         t = f"{self.type}"
         if self.type == "std::function":
             t = t + f"<{self.subtypes[0]}({', '.join(repr(t) for t in self.subtypes[1:])})>"

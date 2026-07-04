@@ -33,6 +33,33 @@ def test_pos_kwargs() -> None:
 
 
 @rust(py=False)
+def greet(name: str = "world", punctuation: str | None = None) -> str:  # ty: ignore[empty-body]
+    """
+    Ok(format!("hello {}{}", name, punctuation.unwrap_or_default()))
+    """
+
+
+def test_default_strings() -> None:
+    assert greet() == "hello world"
+    assert greet("rust") == "hello rust"
+    assert greet("rust", "!") == "hello rust!"
+    assert greet(punctuation="?") == "hello world?"
+
+
+@rust(py=False)
+def offset(x: int, dx: int | None = 10) -> int:  # ty: ignore[empty-body]
+    """
+    Ok(x + dx.unwrap_or(0))
+    """
+
+
+def test_default_optional() -> None:
+    assert offset(1) == 11
+    assert offset(1, 2) == 3
+    assert offset(1, None) == 1
+
+
+@rust(py=False)
 def varargs(*args: Any) -> Annotated[int, "usize"]:  # ty: ignore[empty-body]
     """
     Ok(args.len())
@@ -88,6 +115,8 @@ def test_varposkwargs() -> None:
 
 if __name__ == "__main__":
     test_pos_kwargs()
+    test_default_strings()
+    test_default_optional()
     test_varargs()
     test_varkwargs()
     test_varposkwargs()

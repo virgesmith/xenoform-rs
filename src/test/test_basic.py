@@ -114,6 +114,63 @@ def test_signature_translation2() -> None:
     )
 
 
+def test_signature_translation_tuples() -> None:
+    # tuple as return type
+    def f(x: int) -> tuple[int, float]:  # ty: ignore[empty-body]
+        ""
+
+    assert translate_function_signature(f, py=False) == ("(x: i32) -> PyResult<(i32, f64)>", ["x"])
+
+    # tuples nested inside containers
+    def f2(a: list[tuple[int, int]], d: dict[str, tuple[int, float]]) -> None:
+        ""
+
+    assert translate_function_signature(f2, py=False) == (
+        "(a: Vec<(i32, i32)>, d: HashMap<String, (i32, f64)>) -> PyResult<()>",
+        ["a", "d"],
+    )
+
+    # optional tuple and tuple inside optional container
+    def f3(a: tuple[int, int] | None, b: list[tuple[int, str]] | None) -> tuple[bool, bool]:  # ty: ignore[empty-body]
+        ""
+
+    assert translate_function_signature(f3, py=False) == (
+        "(a: Option<(i32, i32)>, b: Option<Vec<(i32, String)>>) -> PyResult<(bool, bool)>",
+        ["a", "b"],
+    )
+
+    # single-element tuples require a trailing comma in rust
+    def f4(t: tuple[int]) -> tuple[str]:  # ty: ignore[empty-body]
+        ""
+
+    assert translate_function_signature(f4, py=False) == ("(t: (i32,)) -> PyResult<(String,)>", ["t"])
+
+
+def test_signature_translation_defaults() -> None:
+    def f(s: str = "hi", b: bool = False, x: int | None = 5, y: float | None = None) -> None:
+        ""
+
+    assert translate_function_signature(f, py=False) == (
+        "(s: String, b: bool, x: Option<i32>, y: Option<f64>) -> PyResult<()>",
+        ['s="hi".to_string()', "b=false", "x=Some(5)", "y=None"],
+    )
+
+    # string default with an overridden (non-String) rust type stays a plain literal
+    def f2(s: Annotated[str, "&str"] = "hi") -> None:
+        ""
+
+    assert translate_function_signature(f2, py=False) == ("(s: &str) -> PyResult<()>", ['s="hi"'])
+
+    # quotes and backslashes in defaults are escaped
+    def f3(s: str = 'a "b" c\\d') -> None:
+        ""
+
+    assert translate_function_signature(f3, py=False) == (
+        "(s: String) -> PyResult<()>",
+        ['s="a \\"b\\" c\\\\d".to_string()'],
+    )
+
+
 @rust(py=False)
 def max(i: int, j: int) -> int:  # ty: ignore[empty-body]
     # comments can be added before...

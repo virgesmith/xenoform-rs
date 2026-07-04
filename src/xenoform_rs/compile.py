@@ -139,14 +139,14 @@ def _check_annotations[**P, R](func: Callable[P, R]) -> None:
     """Ensures all args and return are typed"""
     sig = inspect.signature(func)
 
-    missing_annotations = ", ".join(
+    missing_annotations = [
         param for param, type_ in sig.parameters.items() if type_.annotation is inspect.Parameter.empty
-    )
+    ]
     if sig.return_annotation is inspect.Parameter.empty:
-        missing_annotations += ", (return)"
+        missing_annotations.append("(return)")
 
     if missing_annotations:
-        raise AnnotationError(f"Function {func.__name__} has missing annotations: {missing_annotations}")  # ty:ignore[unresolved-attribute]
+        raise AnnotationError(f"Function {func.__name__} has missing annotations: {', '.join(missing_annotations)}")  # ty:ignore[unresolved-attribute]
 
 
 def _validate_signature[**P, R](func: Callable[P, R], py: bool) -> tuple[str, list[str]]:
