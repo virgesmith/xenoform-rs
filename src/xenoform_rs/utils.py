@@ -48,9 +48,20 @@ def get_function_scope(func: Callable[..., Any]) -> tuple[str, ...]:
     )
 
 
-def _translate_value(value: Any) -> str:
-    translations = {"False": "false", "True": "true"}
-    return translations.get(str(value), str(value))
+def _translate_value(value: Any, rust_type: str) -> str:
+    """Translate a python default value to a rust expression of the given type, for use in the pyo3 signature"""
+    if value is None:
+        return "None"
+    if rust_type.startswith("Option<") and rust_type.endswith(">"):
+        return f"Some({_translate_value(value, rust_type[7:-1])})"
+    match value:
+        case bool():
+            return "true" if value else "false"
+        case str():
+            literal = '"{}"'.format(value.replace("\\", "\\\\").replace('"', '\\"'))
+            return f"{literal}.to_string()" if rust_type == "String" else literal
+        case _:
+            return str(value)
 
 
 def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple[str, list[str]]:
@@ -88,9 +99,7 @@ def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple
                 arg_def = f"{var_name}: {rusttype}"
                 arg_annotation = f"{var_name}"
             if var_name in defaults:
-                arg_annotation += f"={_translate_value(defaults[var_name])}"
-            if "tuple_placeholder" in arg_def:
-                arg_def = _replace_tuple_angle_brackets(arg_def)
+                arg_annotation += f"={_translate_value(defaults[var_name], str(rusttype))}"
             arg_defs.append(arg_def)
             arg_annotations.append(arg_annotation)
     if pos_only is not None:
@@ -130,38 +139,6 @@ def rust_dependency(*args: str, **kwargs: Any) -> str:
             return f"{args[0]} = {{ {', '.join(params)} }}"
         case _:
             raise RustConfigError("rust_dependency requires a name and either a version string or a keyword parameters")
-
-
-def _replace_tuple_angle_brackets(arg_def: str) -> str:
-
-    arg_def = arg_def.replace("tuple_placeholder", "")
-    i = 0
-    result = []
-    option_depth = 0  # how many Option<...> levels we're inside
-
-    while i < len(arg_def):
-        # Check if we're at the start of "Option<"
-        if arg_def[i : i + 7] == "Option<":
-            result.append("Option<")
-            i += 6
-            option_depth += 1
-
-        elif arg_def[i] == "<":
-            result.append("<" if option_depth > 0 else "(")
-            # i += 1
-
-        elif arg_def[i] == ">":
-            if option_depth > 0:
-                option_depth -= 1
-                result.append(">")
-            else:
-                result.append(")")
-
-        else:
-            result.append(arg_def[i])
-        i += 1
-
-    return "".join(result)
 
 
 def get_lib_path(module_dir: Path, module_name: str) -> Path:
