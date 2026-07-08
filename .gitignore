@@ -20,3 +20,5 @@ ext/
 *.so
 
 .python-version
+
+.claude/
