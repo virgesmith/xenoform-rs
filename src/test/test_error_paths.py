@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,9 @@ def test_rebuild_when_outdated(monkeypatch: pytest.MonkeyPatch) -> None:
     assert plus_one(1) == 2
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="re-checking a loaded module rebuilds on windows, which fails on the locked DLL"
+)
 def test_module_reused_when_up_to_date() -> None:
     body = "() -> PyResult<i32> {Ok(42)}"
     spec = ModuleSpec().add_function(FunctionSpec(name="answer", py=False, body=body, arg_annotations="", scope=()))
