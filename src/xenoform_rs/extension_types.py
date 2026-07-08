@@ -102,7 +102,7 @@ class RustTypeTree:
             # single-element rust tuples require a trailing comma
             return f"({inner},)" if len(self.subtypes) == 1 else f"({inner})"
         t = f"{self.type}"
-        if self.type == "std::function":
+        if self.type == "std::function":  # pragma: no cover - Callable maps to PyCFunction, never std::function
             t = t + f"<{self.subtypes[0]}({', '.join(repr(t) for t in self.subtypes[1:])})>"
         elif self.subtypes:
             t = t + f"<{', '.join(repr(t) for t in self.subtypes)}>"
@@ -114,7 +114,7 @@ def parse_annotation(origin: type) -> tuple[type, str | None]:
     Extract content from Annotation, if present. Optional 2nd return value is the type override
     """
     t = get_origin(origin)
-    if t is None and get_args(origin):
+    if t is None and get_args(origin):  # pragma: no cover - defensive, not reachable via typing constructs
         raise RustTypeError("Python types with no default mapping must be annotated with a type override")
     if t is Annotated:
         base, *extras = get_args(origin)

@@ -128,6 +128,9 @@ def test_parse_annotation() -> None:
     with pytest.raises(TypeError):
         parse_annotation(Annotated[int, 42])  # ty: ignore[invalid-argument-type]
 
+    with pytest.raises(TypeError):
+        parse_annotation(Annotated[int, "a", "b"])  # ty: ignore[invalid-argument-type]
+
 
 def test_overridden_annotated_types() -> None:
     rusttype = translate_type(Annotated[int, "u32"])  # ty: ignore[invalid-argument-type]

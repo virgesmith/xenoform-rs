@@ -88,7 +88,7 @@ def _get_cargo_env() -> dict[str, str]:
     # Best to run with default first and add if issues.
     cargo_env = os.environ.copy()
     match sys.platform:
-        case "darwin":
+        case "darwin":  # pragma: no cover - platform-specific
             cargo_env["RUSTFLAGS"] = (
                 cargo_env.get("RUSTFLAGS", "") + " -C link-arg=-undefined -C link-arg=dynamic_lookup"
             )
