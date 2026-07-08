@@ -30,8 +30,13 @@ jobs:
         uv run ruff check
         uv run ty check
     - name: Test
+      if: matrix.python-version != '3.14' || matrix.os != 'ubuntu-latest'
       run: |
         uv run pytest -sv
+    - name: Test with coverage
+      if: matrix.python-version == '3.14' && matrix.os == 'ubuntu-latest'
+      run: |
+        uv run pytest -sv --cov=xenoform_rs
     - name: Run examples
       run: |
         uv run examples/loop.py
