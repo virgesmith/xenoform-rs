@@ -76,6 +76,8 @@ Tests are in [src/test/](src/test/). Examples are in [examples/](examples/).
 
 Pre-commit hooks run `uv-lock`, `ruff-check --fix`, `ruff-format`, and `ty` automatically on commit.
 
+**The `examples` extra must be installed for `ty` to pass.** The `ty` hook type-checks the whole project, including [examples/](examples/), which imports `pandas` (declared in the `examples` optional extra). Without it, `ty` reports `unresolved-import` and treats the necessary `# ty: ignore` directives as unused. Install it with `uv sync --dev --all-extras` (or `uv sync --extra examples`).
+
 ## Quality Gates
 
 All of the following must pass before any change is considered complete:
