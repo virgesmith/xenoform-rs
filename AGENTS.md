@@ -44,6 +44,27 @@ Each entry records:
 Write the entry as part of the change, not after the fact — the journal is the durable
 record of intent that keeps the maintainer in control of the codebase's direction.
 
+## Design Reviews
+
+Decisions in this repo are made under the constraints of the moment — including what LLMs and
+agent tooling could do at the time. Those capabilities evolve fast, so a decision that was right
+six months ago may be a needless constraint today. **Periodically step back and review the overall
+design, not just the next diff.**
+
+- **Cadence.** Hold a design review roughly every 10 merged PRs or every few months, whichever
+  comes first — or whenever a change feels like it's fighting the architecture. Either the
+  maintainer or the agent may call one.
+- **Input.** The design-decision entries in [JOURNAL.md](JOURNAL.md) are the agenda: walk the
+  recorded decisions and their rejected alternatives and ask whether the reasoning still holds.
+- **Questions to ask.** Have the original constraints (library capabilities, data availability,
+  model/agent limitations) shifted? Are there recurring follow-ups or workarounds that point at a
+  structural problem? Would a rejected alternative now be the better choice? Is complexity earning
+  its keep?
+- **Output.** Record the review as a JOURNAL.md entry of its own: what was reconsidered, what was
+  reaffirmed (and why), and what should change. Reaffirmations matter as much as changes — they
+  stop the same ground being re-litigated every review. Concrete changes become planned tasks via
+  the normal [workflow](#workflow); never fold a redesign into an unrelated PR.
+
 ## Project Overview
 
 `xenoform-rs` is a Python library that lets you write and execute Rust code inline in Python. You annotate a Python function with the `@rust` decorator and put the Rust implementation in its docstring; on import, the library translates the Python type signatures to Rust types, generates a pyo3 extension module, compiles it with `cargo`, and replaces the Python function with the compiled Rust one.
