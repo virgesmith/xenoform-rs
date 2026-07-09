@@ -271,7 +271,7 @@ Full code is in [examples/distance_matrix.py](examples/distance_matrix.py).
 
 ### Monte Carlo simulation
 
-This example compares optimised parallel Monte Carlo simulations pricing an arithmetic-average Asian call option by - a tight RNG loop over `n_paths × n_steps` iterations - comparing multi-core python/numpy against multi-core rust. It also shows how to use third-party crates (`rand`, `rand_distr`, `rayon`) and how `rayon` parallelises pure-rust computation across all cores - independently of the python interpreter, so it works even on GIL-enabled builds.
+This example compares optimised parallel Monte Carlo simulations pricing an arithmetic-average Asian call option - a tight RNG loop over `n_paths × n_steps` iterations - comparing multi-core python/numpy against multi-core rust. It also shows how to use third-party crates (`rand`, `rand_distr`, `rayon`) and how `rayon` parallelises pure-rust computation across all cores - independently of the python interpreter, so it works even on GIL-enabled builds.
 
 The python baseline is numpy at its best: vectorised, in-place, and sharded across a thread pool. Even so it has
 two handicaps rust doesn't. Vectorisation means materialising the whole `(n_paths, n_steps)` matrix - 2GB at a
