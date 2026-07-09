@@ -2,6 +2,48 @@
 
 This file instructs AI agents acting as developer, reviewer, and QA for this repository.
 
+## Collaboration & Ownership
+
+The maintainer must retain **ownership** of this codebase — meaning they understand
+every change well enough to explain, defend, and modify it without the agent. The
+agent's speed serves that understanding; it does not replace it. Follow these rules
+of engagement:
+
+1. **Plan before code, and wait for approval.** For any non-trivial change, present
+   a plan first — approach, files touched, trade-offs — and do not write code until
+   the maintainer has understood and signed off. If a decision in the plan can't be
+   evaluated yet, stop and explain it.
+2. **Small, reviewable diffs — never a big-bang drop.** Break large work into
+   increments that can be read in one sitting and reviewed one at a time.
+3. **Leave the load-bearing parts to the maintainer when asked.** Offer to hand off
+   the core algorithm or tricky module rather than always doing everything; default
+   to boilerplate, tests, plumbing, and review.
+4. **Explain-it-back gate.** Before proposing a merge, make sure the maintainer can
+   explain *why* the change works and what the alternatives were. Offer a
+   walk-through; act as tutor, not just producer.
+5. **Justify trade-offs, not just conclusions.** State *why* this data structure,
+   error type, or approach — and why not the obvious alternative. The reasoning is
+   the transferable knowledge.
+6. **Prefer idioms the maintainer can learn from**, especially in Rust. Flag new or
+   unusual patterns and point to where to read more, rather than using them silently.
+7. **Tests are the readable spec.** Keep them clear enough that reading the tests
+   conveys the contract even when the implementation is dense.
+
+## Task & Design Summaries
+
+**Every task/PR must be recorded** as a new entry at the top of [JOURNAL.md](JOURNAL.md).
+Each entry records:
+
+- **Why** — the motivation for the change and the problem it solves.
+- **What** — a short description of the change at a high level.
+- **Design decisions** — the choices made, the alternatives considered, and why each
+  was accepted or rejected. Capture any non-obvious trade-offs or constraints here
+  rather than only in code comments.
+- **Follow-ups** — anything deferred, and known limitations.
+
+Write the entry as part of the change, not after the fact — the journal is the durable
+record of intent that keeps the maintainer in control of the codebase's direction.
+
 ## Project Overview
 
 `xenoform-rs` is a Python library that lets you write and execute Rust code inline in Python. You annotate a Python function with the `@rust` decorator and put the Rust implementation in its docstring; on import, the library translates the Python type signatures to Rust types, generates a pyo3 extension module, compiles it with `cargo`, and replaces the Python function with the compiled Rust one.
@@ -143,11 +185,13 @@ pyproject.toml
 
 ## Workflow
 
-1. Create a feature branch off `main` — never commit directly to `main`.
-2. Make changes under [src/xenoform_rs/](src/xenoform_rs/).
-3. Add or update tests in [src/test/](src/test/) — each new type mapping, parameter, or error path needs coverage.
-4. Run the full gate suite locally (including the examples).
-5. If the public API or type translation table changed, update [README.md](README.md).
-6. Commit — pre-commit hooks will auto-fix formatting and re-lock `uv.lock`.
-7. Open a PR targeting `main`; CI must pass (all OS × Python version combinations) before merging.
-8. To release: bump the version in [pyproject.toml](pyproject.toml), merge to `main`, then push a `vX.Y.Z` tag — PyPI publish triggers automatically.
+1. Agree the plan with the maintainer before writing code (see [Collaboration & Ownership](#collaboration--ownership)).
+2. Create a feature branch off `main` — never commit directly to `main`.
+3. Make changes under [src/xenoform_rs/](src/xenoform_rs/).
+4. Add or update tests in [src/test/](src/test/) — each new type mapping, parameter, or error path needs coverage.
+5. Add a task/design entry to [JOURNAL.md](JOURNAL.md) (see [Task & Design Summaries](#task--design-summaries)).
+6. Run the full gate suite locally (including the examples).
+7. If the public API or type translation table changed, update [README.md](README.md).
+8. Commit — pre-commit hooks will auto-fix formatting and re-lock `uv.lock`.
+9. Open a PR targeting `main`; CI must pass (all OS × Python version combinations) before merging.
+10. To release: bump the version in [pyproject.toml](pyproject.toml), merge to `main`, then push a `vX.Y.Z` tag — PyPI publish triggers automatically.
