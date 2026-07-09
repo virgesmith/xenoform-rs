@@ -269,6 +269,128 @@ N | py (ms) | rust (ms) | speedup
 
 Full code is in [examples/distance_matrix.py](examples/distance_matrix.py).
 
+### Monte Carlo simulation
+
+This example compares optimised parallel Monte Carlo simulations pricing an arithmetic-average Asian call option by - a tight RNG loop over `n_paths × n_steps` iterations - comparing multi-core python/numpy against multi-core rust. It also shows how to use third-party crates (`rand`, `rand_distr`, `rayon`) and how `rayon` parallelises pure-rust computation across all cores - independently of the python interpreter, so it works even on GIL-enabled builds.
+
+The python baseline is numpy at its best: vectorised, in-place, and sharded across a thread pool. Even so it has
+two handicaps rust doesn't. Vectorisation means materialising the whole `(n_paths, n_steps)` matrix - 2GB at a
+million paths - so the threads compete for memory bandwidth, and scaling plateaus well short of the core count.
+And because numpy ufuncs are single-threaded, the multi-core version needs manual sharding with independent
+deterministic RNG streams per shard via `SeedSequence.spawn`:
+
+```py
+def _payoff_sum_np(
+    s0: float, k: float, r: float, sigma: float, t: float, n_steps: int, n_paths: int, rng: np.random.Generator
+) -> float:
+    "Sum of Asian call payoffs over n_paths simulated paths (in-place, to peak at one (n_paths, n_steps) matrix)"
+    dt = t / n_steps
+    drift = (r - 0.5 * sigma * sigma) * dt
+    vol = sigma * math.sqrt(dt)
+    z = rng.standard_normal((n_paths, n_steps))
+    z *= vol
+    z += drift
+    np.cumsum(z, axis=1, out=z)
+    np.exp(z, out=z)
+    return float(np.maximum(s0 * z.mean(axis=1) - k, 0.0).sum())
+
+
+def price_asian_option_np_threads(
+    s0: float, k: float, r: float, sigma: float, t: float, n_steps: int, n_paths: int, seed: int
+) -> float:
+    "Shard the paths across a thread pool, each with an independent RNG stream"
+    counts = [n_paths // N_THREADS + (i < n_paths % N_THREADS) for i in range(N_THREADS)]
+    rngs = [np.random.default_rng(s) for s in np.random.SeedSequence(seed).spawn(N_THREADS)]
+    with ThreadPoolExecutor(max_workers=N_THREADS) as ex:
+        sums = ex.map(lambda n, rng: _payoff_sum_np(s0, k, r, sigma, t, n_steps, n, rng), counts, rngs)
+    return math.exp(-r * t) * sum(sums) / n_paths
+```
+
+The rust implementation, by contrast, holds each path in a register, allocates nothing, and parallelises with a
+one-line `rayon` change (`into_par_iter`):
+
+```py
+@rust(
+    py=False,
+    dependencies=[
+        rust_dependency("rand", version="0.9", features=["small_rng"]),
+        rust_dependency("rand_distr", version="0.5"),
+        rust_dependency("rayon", version="1.11"),
+    ],
+    imports=[
+        "rand::{Rng, SeedableRng}",
+        "rand::rngs::SmallRng",
+        "rand_distr::StandardNormal",
+        "rayon::prelude::*",
+    ],
+    profile={"strip": "symbols"},
+)
+def price_asian_option_rayon(
+    s0: float,
+    k: float,
+    r: float,
+    sigma: float,
+    t: float,
+    n_steps: Annotated[int, "usize"],
+    n_paths: Annotated[int, "usize"],
+    seed: Annotated[int, "u64"],
+) -> float:
+    """
+```
+
+```rs
+    let dt = t / n_steps as f64;
+    let drift = (r - 0.5 * sigma * sigma) * dt;
+    let vol = sigma * dt.sqrt();
+    // one independently-seeded RNG per path keeps the result deterministic regardless of scheduling
+    let payoff_sum: f64 = (0..n_paths)
+        .into_par_iter()
+        .map(|i| {
+            let mut rng = SmallRng::seed_from_u64(seed.wrapping_add(i as u64));
+            let mut s = s0;
+            let mut total = 0.0;
+            for _ in 0..n_steps {
+                let z: f64 = rng.sample(StandardNormal);
+                s *= (drift + vol * z).exp();
+                total += s;
+            }
+            (total / n_steps as f64 - k).max(0.0)
+        })
+        .sum();
+    Ok((-r * t).exp() * payoff_sum / n_paths as f64)
+```
+
+```py
+    """
+```
+
+Performance comparison (daily steps over one year, i.e. 252 steps per path, python 3.13 on 22 cores):
+
+N | numpy+threads (ms) | rust+rayon (ms) | speedup
+-:|--------:|--------:|--------:
+100000 | 60.6 | 23.1 | 162%
+300000 | 174.7 | 67.7 | 158%
+1000000 | 545.9 | 227.7 | 140%
+
+**Why free-threading (`3.14t`) barely changes these numbers** - a result that surprises people expecting the
+free-threaded build to be the enabler here. Free-threading only helps when the GIL is what stops threads running
+in parallel, and for this workload it never was:
+
+- The rust runs the entire loop in compiled code with the GIL released (`py=False`, no python objects touched), so
+  its parallelism was never GIL-limited.
+- numpy releases the GIL *inside* each large array operation (`standard_normal`, `cumsum`, `exp`, `mean`), holding
+  it only for the negligible glue between them - so its thread pool already gets real parallelism on a plain
+  GIL-enabled interpreter. You can watch all cores light up on 3.13.
+
+So the GIL was already out of the way on both sides, and removing it entirely (`3.14t`) leaves nothing to gain.
+Free-threading *would* matter for a **pure-python** threaded loop, which cannot release the GIL - but the moment
+the baseline is numpy rather than pure python, that advantage evaporates.
+
+Both implementations are also reproducible: the result never depends on thread scheduling, because each path's
+(or shard's) random draws are pinned by its index, not by which thread happens to compute it.
+
+Full code is in [examples/monte_carlo.py](examples/monte_carlo.py).
+
 ## Type Translations
 
 ### Default mapping
