@@ -22,7 +22,7 @@ Entry template:
 
 ---
 
-## 2026-07-09 — Add collaboration rules and development journal
+## 2026-07-09 — Add collaboration rules and development journal (#17)
 
 **Why** — The maintainer wants to retain ownership of the codebase — understanding
 every change well enough to explain and modify it independently — rather than being
@@ -32,7 +32,8 @@ intent per change.
 **What** — Added a *Collaboration & Ownership* section (plan-first-with-approval,
 small diffs, explain-it-back gate, justify trade-offs, learnable idioms) and a
 *Task & Design Summaries* section to `AGENTS.md`, wired both into the Workflow, and
-introduced this `JOURNAL.md`.
+introduced this `JOURNAL.md`. Also noted in `AGENTS.md` that the `examples` extra
+must be installed for `ty` to pass (it type-checks `examples/`, which imports pandas).
 
 **Design decisions**
 - Single append-only `JOURNAL.md` at the repo root — chosen over per-task files in

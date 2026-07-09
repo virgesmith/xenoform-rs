@@ -68,7 +68,7 @@ Tests are in [src/test/](src/test/). Examples are in [examples/](examples/).
 |------|---------|
 | Package manager | `uv` |
 | Linter / formatter | `ruff` (`uv run ruff check`, `uv run ruff format`) |
-| Type checker | `ty` (`uv run ty check src`) |
+| Type checker | `ty` (`uv run ty check`) |
 | Tests | `uv run pytest -sv` |
 | Install dev deps | `uv sync --dev --all-extras` |
 
@@ -85,7 +85,7 @@ All of the following must pass before any change is considered complete:
 ```sh
 uv run ruff check          # zero lint errors
 uv run ruff format --check # zero formatting issues
-uv run ty check src        # zero type errors
+uv run ty check            # zero type errors (whole project, incl. examples/)
 uv run pytest -sv          # all tests pass
 uv run examples/loop.py           # examples still work
 uv run examples/distance_matrix.py
