@@ -1,7 +1,9 @@
 import inspect
 import logging
+import re
 import subprocess
 import sys
+import sysconfig
 from collections import defaultdict
 from collections.abc import Callable
 from importlib.machinery import ExtensionFileLoader
@@ -141,16 +143,42 @@ def rust_dependency(*args: str, **kwargs: Any) -> str:
             raise RustConfigError("rust_dependency requires a name and either a version string or a keyword parameters")
 
 
+def python_abi() -> str:
+    """The interpreter's extension-module ABI tag.
+
+    `EXT_SUFFIX` (e.g. ``.cpython-314t-x86_64-linux-gnu.so``, ``.cp314-win_amd64.pyd``) captures Python
+    version, GIL/free-threaded mode and platform in one value — the full identity of a binary's target.
+    """
+    return str(sysconfig.get_config_var("EXT_SUFFIX"))
+
+
+def python_abi_tag() -> str:
+    """Filesystem-safe slug of `python_abi`, used to isolate cargo builds per interpreter ABI."""
+    return re.sub(r"[^A-Za-z0-9]+", "_", python_abi()).strip("_")
+
+
+def get_target_dir(module_dir: Path) -> Path:
+    """Cargo target directory for the current interpreter.
+
+    Each Python ABI gets its own subdirectory so switching interpreter (e.g. GIL -> free-threaded, which
+    keeps the same venv path) can never reuse another ABI's cached pyo3 build — cargo has no fingerprint
+    input that changes when only the interpreter behind a stable venv path changes, so without isolation
+    it would relink a stale, ABI-mismatched binary (SystemError: init function returned uninitialized object).
+    """
+    return module_dir / "target" / python_abi_tag()
+
+
 def get_lib_path(module_dir: Path, module_name: str) -> Path:
     """Get the expected path of the compiled shared library for the current platform"""
+    release_dir = get_target_dir(module_dir) / "release"
     match sys.platform:
         case "linux":
-            return module_dir / "target/release" / f"lib{module_name}.so"
+            return release_dir / f"lib{module_name}.so"
         case "darwin":
-            return module_dir / "target/release" / f"lib{module_name}.dylib"
+            return release_dir / f"lib{module_name}.dylib"
         case "win32":
             # Windows library names don't typically start with 'lib' prefix
-            return module_dir / "target/release" / f"{module_name}.dll"
+            return release_dir / f"{module_name}.dll"
         case _:
             raise RustConfigError(f"Unsupported platform: {sys.platform}")
 

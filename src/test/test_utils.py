@@ -41,12 +41,13 @@ def test_rustfmt_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_get_lib_path_platforms(monkeypatch: pytest.MonkeyPatch) -> None:
     module_dir = Path("/some/module")
+    release = module_dir / "target" / utils.python_abi_tag() / "release"
 
     monkeypatch.setattr(sys, "platform", "darwin")
-    assert utils.get_lib_path(module_dir, "mod") == module_dir / "target/release/libmod.dylib"
+    assert utils.get_lib_path(module_dir, "mod") == release / "libmod.dylib"
 
     monkeypatch.setattr(sys, "platform", "win32")
-    assert utils.get_lib_path(module_dir, "mod") == module_dir / "target/release/mod.dll"
+    assert utils.get_lib_path(module_dir, "mod") == release / "mod.dll"
 
     monkeypatch.setattr(sys, "platform", "sunos5")
     with pytest.raises(RustConfigError):

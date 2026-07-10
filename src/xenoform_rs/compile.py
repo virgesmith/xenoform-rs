@@ -13,7 +13,13 @@ from typing import ParamSpec, TypeVar
 from xenoform_rs.config import get_config
 from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError, RustTypeError
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
-from xenoform_rs.utils import get_function_scope, get_lib_path, load_rust_module, translate_function_signature
+from xenoform_rs.utils import (
+    get_function_scope,
+    get_lib_path,
+    get_target_dir,
+    load_rust_module,
+    translate_function_signature,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +85,7 @@ _RUST_KEYWORDS = frozenset(
 )
 
 
-def _get_cargo_env() -> dict[str, str]:
+def _get_cargo_env(module_dir: Path) -> dict[str, str]:
     # Environment variables for linking, especially for macOS.
     # - `undefined dynamic_lookup` is crucial for PyO3 on macOS when building `cdylib`.
     # - `rpath $ORIGIN` (Linux) helps the loader find dependent libraries if any, relative to the executable.
@@ -87,6 +93,13 @@ def _get_cargo_env() -> dict[str, str]:
     # Note: For Windows, this might not be needed or might need different flags.
     # Best to run with default first and add if issues.
     cargo_env = os.environ.copy()
+    # Build into an ABI-specific target dir and pin pyo3 to the running interpreter. Together these ensure a
+    # binary is built for — and only reused by — the exact interpreter that will load it: PYO3_PYTHON stops
+    # pyo3 configuring against an unrelated `python` on PATH, and the per-ABI target dir stops a GIL->free-threaded
+    # switch (which keeps the same venv path, so cargo's fingerprint is unchanged) reusing a stale build.
+    # absolute: cargo runs with cwd=module_dir, so a relative CARGO_TARGET_DIR would resolve against that
+    cargo_env["CARGO_TARGET_DIR"] = str(get_target_dir(module_dir).resolve())
+    cargo_env["PYO3_PYTHON"] = sys.executable
     match sys.platform:
         case "darwin":  # pragma: no cover - platform-specific
             cargo_env["RUSTFLAGS"] = (
@@ -246,7 +259,7 @@ def _check_build_fetch_module_impl(
                 stdout=fd,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_get_cargo_env(),
+                env=_get_cargo_env(module_dir),
                 timeout=300,
             )
         if compile_result.returncode != 0:
