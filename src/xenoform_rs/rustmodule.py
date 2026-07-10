@@ -1,3 +1,4 @@
+import sysconfig
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -28,6 +29,7 @@ pyo3 = {{ version = "{pyo3_version}", features = ["extension-module", "abi3-py31
 
 
 _MODULE_TEMPLATE = """
+// Built for Python ABI: {python_abi}
 #![allow(clippy::needless_lifetimes)]
 #![allow(clippy::extra_unused_lifetimes)]
 #![allow(non_upper_case_globals)]
@@ -57,6 +59,12 @@ _FUNCTION_DEFINITION_TEMPLATE = """
 fn {function_name}<'py>{function_body}
 
 """
+
+
+def _python_abi() -> str:
+    # EXT_SUFFIX is the interpreter's extension-module ABI tag (e.g. ".cpython-314t-x86_64-linux-gnu.so",
+    # ".cp314-win_amd64.pyd") — it captures Python version, GIL/free-threaded mode and platform in one value
+    return str(sysconfig.get_config_var("EXT_SUFFIX"))
 
 
 def _format_help(help: str | None) -> str:
@@ -149,9 +157,12 @@ class ModuleSpec:
             )
         )
 
-        # create the code without the hash
+        # create the code without the hash. The interpreter ABI is embedded as a comment so a binary built
+        # for another Python version or GIL mode triggers a rebuild (it changes `code`, hence the checksum)
+        # rather than being silently reused — and it stays human-readable in lib.rs for debugging.
         code = _MODULE_TEMPLATE.format(
             version=version,
+            python_abi=_python_abi(),
             module_name=module_name,
             modules="\n".join(f"pub mod {m.stem};" for m in self.modules),
             freethreaded="(gil_used = true)" if get_config().disable_ft else "(gil_used = false)",
