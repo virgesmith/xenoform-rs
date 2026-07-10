@@ -31,12 +31,16 @@ checksum only covered the generated sources, so switching interpreters left user
 with a stale binary and the "delete the `ext` folder" failure mode — or worse, a
 binary that imported but degraded free-threading without any signal.
 
-**What** — `ModuleSpec.make_source` now emits the interpreter's ABI tag as a
-`// Built for Python ABI: …` comment at the top of the generated `lib.rs`. Because
-the checksum embedded in the module (`__checksum__`) is a hash of the generated
-sources, the comment automatically becomes part of it: running under a different
-Python version, GIL mode, or platform changes the source, so the freshness check
-in `compile.py` mismatches and triggers the normal automatic rebuild.
+**What** — Two complementary changes so an interpreter switch produces a *correct*
+rebuild automatically:
+1. `ModuleSpec.make_source` emits the interpreter's ABI tag as a
+   `// Built for Python ABI: …` comment at the top of the generated `lib.rs`.
+   Because `__checksum__` is a hash of the generated sources, the comment makes the
+   freshness check ABI-sensitive, so a different Python version/GIL mode/platform
+   triggers the normal rebuild.
+2. Each interpreter ABI builds into its own cargo target directory
+   (`target/<abi-tag>/`, via `CARGO_TARGET_DIR`), and `PYO3_PYTHON` is pinned to
+   `sys.executable`.
 
 **Design decisions**
 - ABI tag source is `sysconfig.get_config_var("EXT_SUFFIX")` (e.g.
@@ -49,20 +53,35 @@ in `compile.py` mismatches and triggers the normal automatic rebuild.
   Both make the checksum ABI-sensitive, but the comment also leaves the ABI
   human-readable in `lib.rs`, so when a stale binary is suspected the value that
   drove (or didn't drive) a rebuild can be read straight from the generated
-  source instead of being an invisible input to a hash. rustfmt preserves the
-  leading comment, so it survives formatting unchanged.
-- Deliberately conservative: hashing the full tag forces a rebuild on any minor
-  version bump even though GIL builds use `abi3-py312` and would remain
-  ABI-compatible. A rebuild costs one compile; distinguishing "abi3-safe" from
-  "version-specific" (free-threaded) builds would complicate the hash for a rare
-  saving and risk missing the silent-GIL-re-enable case.
-- No change to the comparison logic in `compile.py` — the ABI is treated as just
-  another build input to the existing hash, so the rebuild path stays single.
+  source. rustfmt preserves the leading comment, so it survives formatting.
+- **Per-ABI target dir was the load-bearing fix.** The checksum change alone was
+  insufficient and produced a hard `SystemError: init function of <mod> returned
+  uninitialized object`: it correctly triggers a rebuild, but a `cargo build` in the
+  *existing* target dir reuses pyo3's cached build-config (interpreter version,
+  abi3, GIL mode) — cargo has no fingerprint input that changes when only the
+  interpreter behind a stable venv path changes (a GIL->free-threaded `uv sync`
+  keeps `.venv/bin/python` identical), so it relinks our recompiled crate against a
+  stale, ABI-mismatched pyo3. Alternatives rejected: (a) `cargo clean`/wipe target
+  on every rebuild — kills incremental compilation and the fast edit-compile loop,
+  and heavy dep trees (polars) would recompile from scratch on every source edit;
+  (b) invalidate via `PYO3_PYTHON` value change — fails here because the venv path
+  is stable across the switch, so the value doesn't change. Isolating by ABI dir
+  needs no fingerprint trickery: a different interpreter simply uses a different,
+  empty dir and does a clean build, while switching back reuses a warm cache.
+- `PYO3_PYTHON = sys.executable` pins pyo3 to the interpreter doing the import,
+  rather than whatever `python` is first on `PATH` — important because running
+  `.venv/bin/python` without activating the venv leaves a system `python` ahead on
+  `PATH`, which pyo3 would otherwise configure against.
+- `CARGO_TARGET_DIR` is resolved to an absolute path: cargo runs with
+  `cwd=module_dir`, so a relative value would resolve against that and land the
+  artifacts in the wrong place.
 
-**Follow-ups** — The remaining robustness items in issue #13 (shared cargo target
-dir, sidecar checksum file, AOT build command) are untouched; the sidecar-file
-idea would pair well with this since the ABI-sensitive checksum makes the sidecar
-equally trustworthy.
+**Follow-ups** — Per-ABI target dirs multiply on-disk build artifacts (one tree per
+interpreter used). The issue #13 "share a cargo target dir across modules" item
+should layer on top as `extmodule_root/<abi-tag>/` — sharing across modules while
+still isolating by ABI. Sidecar checksum file and AOT build command still untouched.
+
+## Rationale for this file
 
 **Why** — The maintainer wants to retain ownership of the codebase — understanding
 every change well enough to explain and modify it independently — rather than being

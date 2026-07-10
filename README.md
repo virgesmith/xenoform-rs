@@ -30,7 +30,8 @@ The Rust functions execute directly with minimal overhead.
 Each module stores a hash of its source code and Cargo.toml. On import, xenoform-rs checks these hashes and
 automatically rebuilds the module if any changes are detected. The interpreter ABI (Python version, and whether the
 build is GIL-enabled or free-threaded) is part of this hash, so switching Python versions or GIL/free-threaded builds
-triggers a rebuild automatically.
+triggers a rebuild automatically. Each interpreter builds into its own subdirectory, so switching back and forth reuses
+each cached build rather than recompiling.
 
 **Where files go:**
 By default, the `ext` subfolder contains binaries, generated source code, and build logs. To change this location see
