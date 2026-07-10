@@ -28,7 +28,9 @@ The Rust functions execute directly with minimal overhead.
 
 **Change detection:**
 Each module stores a hash of its source code and Cargo.toml. On import, xenoform-rs checks these hashes and
-automatically rebuilds the module if any changes are detected.
+automatically rebuilds the module if any changes are detected. The interpreter ABI (Python version, and whether the
+build is GIL-enabled or free-threaded) is part of this hash, so switching Python versions or GIL/free-threaded builds
+triggers a rebuild automatically.
 
 **Where files go:**
 By default, the `ext` subfolder contains binaries, generated source code, and build logs. To change this location see
@@ -61,9 +63,6 @@ rust type e.g. `Annotated[int | float, "f64"]`.
 - no support currently for linking to external prebuilt binaries
 - due to restrictions arising from linguistic differences, xenoform-rs will likely never be as functionally complete
 than its C++ sister, [xenoform](https://pypi.org/project/xenoform/)
-- if you build the modules then change to a different python version, or switch between GIL/freethreaded builds, the
-interpreter ABI is folded into each module's checksum, so a rebuild is triggered automatically — no need to delete the
-extension module folder.
 
 ## Getting started
 
