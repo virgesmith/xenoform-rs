@@ -81,6 +81,91 @@ interpreter used). The issue #13 "share a cargo target dir across modules" item
 should layer on top as `extmodule_root/<abi-tag>/` — sharing across modules while
 still isolating by ABI. Sidecar checksum file and AOT build command still untouched.
 
+## 2026-07-09 — Add Monte Carlo simulation example with rayon parallelism (#18)
+
+**Why** — Item 2 of #16: the existing examples don't showcase rust's biggest wins —
+tight RNG loops that numpy can only vectorise at the cost of materialising the whole
+simulation in memory — nor multi-core scaling, which rust gets via `rayon`
+regardless of the GIL.
+
+**What** — Added `examples/monte_carlo.py`, a parallel-only comparison pricing an
+arithmetic-average Asian call option two ways: vectorised numpy sharded across a
+thread pool, and rayon-parallel inline rust, with a timing table up to a million
+paths. Also the first example to use third-party crates (`rand`, `rand_distr`,
+`rayon`) and a cargo feature flag (`small_rng`). README gained a matching *Monte
+Carlo simulation* section; CI runs the new example.
+
+**Design decisions**
+- *Asian option rather than European or π-estimation* — a European option needs only
+  one normal draw per path, so numpy vectorises it trivially and there is no loop
+  story to tell. The arithmetic-average payoff needs the whole path, giving the
+  per-step sequential loop rust excels at while still admitting a vectorised numpy
+  baseline for an honest comparison.
+- *No pure-python baseline* — nobody would run a Monte Carlo like this without numpy,
+  so the naive-loop column (~60× slower than numpy) added length, CI time, and a
+  strawman without informing the comparison. numpy is the realistic contender.
+- *In-place numpy operations* — the natural expression chains `standard_normal`,
+  `cumsum` and `exp`, each allocating its own `(n_paths, n_steps)` array (~2GB each
+  at a million paths), which would exhaust the 7GB macOS CI runners. In-place ops
+  bound peak memory at one matrix, and also make the baseline as strong as numpy can
+  reasonably be — the point is that rust streams each path with no allocation at all.
+- *Parallel-only comparison* (per maintainer review, in two steps) — the original
+  four-way table (single- and multi-threaded variants of both numpy and rust) buried
+  the point. Comparing 1-core numpy against 22-core rayon conflated rust's per-core
+  advantage with core count, so a threaded numpy baseline was added; the
+  single-threaded columns were then dropped entirely as the existing examples already
+  cover the per-core story. numpy ufuncs are single-threaded, so the multi-core numpy
+  version shards paths across a `ThreadPoolExecutor`, one independent RNG stream per
+  shard via `SeedSequence.spawn` (the numpy-recommended way to get parallel streams).
+  It is memory-bandwidth-bound — every thread streams its share of the 2GB matrix
+  through RAM, so scaling plateaus at ~8× on 22 cores — while rayon holds each path in
+  a register and stays ~2.7× ahead at scale.
+- *3.14t is not load-bearing for this example* (found empirically by the maintainer,
+  who measured near-identical speedups on 3.13 and 3.14t — corroborated: 1M paths gives
+  numpy+threads ~546ms / rayon ~228ms on GIL 3.13 vs ~566/219 on 3.14t). Both sides
+  already bypass the GIL: rayon runs the whole loop in compiled code with the GIL
+  released, and numpy releases the GIL inside each large ufunc, holding it only for the
+  negligible glue between array ops. Free-threading would only help a *pure-python*
+  threaded loop, which we don't have. The README and docstrings were corrected to drop
+  the implication that 3.14t drives the result; the table is now labelled 3.13. The
+  issue's "pairs especially well with 3.14t" framing turned out not to hold once the
+  python baseline is numpy rather than pure python.
+- *`SmallRng` (Xoshiro256PlusPlus on 64-bit, via the `small_rng` cargo feature) over
+  `StdRng`* — RNG speed dominates the inner loop and cryptographic quality is
+  irrelevant here; it also demonstrates passing `features=` through `rust_dependency`.
+- *One independently-seeded RNG per path in the rayon version* (`SmallRng::seed_from_u64(seed + i)`)
+  — keeps the result deterministic regardless of thread scheduling. The per-path seeds
+  are consecutive integers, which differ in only a bit or two; `seed_from_u64` scrambles
+  each one into the generator's full 256-bit state with the SplitMix64 finalizer (the
+  seeding step, distinct from Xoshiro256PlusPlus itself, which then produces the draws),
+  so adjacent paths get statistically independent streams — the seeding scheme the
+  xoshiro authors recommend. The alternative, `map_init` with one RNG per rayon worker,
+  is slightly faster but nondeterministic. Both implementations are consequently
+  reproducible — pinning the draws to the path/shard index (rather than to the thread)
+  means the result is independent of thread scheduling, with no data races. numpy's is
+  bit-deterministic by construction (fixed shard sizes, `SeedSequence.spawn` order,
+  ordered reduction); rayon's is bit-stable in practice, the only theoretical wobble
+  being FP-reassociation in the parallel `.sum()`, which is not a race.
+- *Top size capped at a million paths* — the numpy baseline must materialise the whole
+  `(n_paths, n_steps)` matrix; at a million paths that peaks at ~2GB (measured), and
+  the sharded threads hold it all at once. 3M paths (~6GB) was tried but would OOM the
+  7GB macOS CI runners on which the example runs, so the table stops at 1M.
+- *`perf_counter` instead of the other examples' `process_time`* — `process_time`
+  sums CPU time across threads, which would show rayon as no faster than
+  single-threaded rust; wall-clock time is the honest metric for a parallelism demo.
+- *Statistical rather than exact result check* — each implementation consumes a
+  different RNG stream, so estimates agree only within Monte Carlo error; the assert
+  bounds the spread at ~6 standard errors (payoff σ ≈ 9 for the chosen parameters).
+- *Warm-up calls before timing* — the one-off module import/hash-check cost (~350 ms)
+  otherwise lands on the first timed rust call and misrepresents per-call cost.
+
+**Follow-ups** — Items 1, 3 and 4 of #16 (Mandelbrot, Levenshtein, n-body) remain. A
+future example with a genuinely GIL-bound python baseline (pure-python threading) would
+actually demonstrate the 3.14t benefit this one does not.
+While developing, single-threaded rust (a variant since removed from the example)
+measured ~30% slower under 3.14t than under GIL 3.13 (~2.0s vs ~1.5s at a million
+paths, consistent across runs) — unexplained, may merit investigation.
+
 ## Rationale for this file
 
 **Why** — The maintainer wants to retain ownership of the codebase — understanding
