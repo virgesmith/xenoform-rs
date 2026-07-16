@@ -110,6 +110,7 @@ uv run ty check            # zero type errors (whole project, incl. examples/)
 uv run pytest -sv          # all tests pass
 uv run examples/loop.py           # examples still work
 uv run examples/distance_matrix.py
+uv run examples/monte_carlo.py
 ```
 
 There is no coverage threshold configured, but tests compile and execute real Rust, so they are inherently integration-level — every code path should be exercised.
@@ -192,6 +193,7 @@ src/
 examples/
   loop.py
   distance_matrix.py
+  monte_carlo.py
 .github/workflows/
   lint-test.yml         # CI: lint + type check + test matrix + examples
   publish.yml           # CI: PyPI publish on tag
