@@ -22,6 +22,38 @@ Entry template:
 
 ---
 
+## 2026-07-16 — Drop the ABI comment from the generated source
+
+**Why** — Follow-on cleanup to the 2026-07-10 entry below, which landed two
+complementary changes for the same goal. Only one of them turned out to be load-bearing:
+because `get_lib_path` resolves the binary *inside* the per-ABI target dir, the freshness
+check is already ABI-partitioned — a 3.14t run reads the checksum out of
+`target/cpython_314t_*/release/lib*.so` and can never see the 3.13 binary. So within any
+one target dir the ABI is a constant, and folding it into the checksum decides nothing.
+
+**What** — Removed the `// Built for Python ABI: …` comment from `_MODULE_TEMPLATE` and
+the `python_abi()` call from `make_source`, leaving the generated sources ABI-independent.
+`python_abi` itself stays — `python_abi_tag` (hence the target dir) is built on it.
+Renamed `test_checksum_abi.py` to `test_abi.py` and replaced the embedding test with its
+inverse, asserting the ABI does *not* appear in the generated source.
+
+**Design decisions**
+- Removed rather than kept for its documentation value. The comment's stated secondary
+  benefit was leaving the ABI human-readable in `lib.rs` for debugging, but that is
+  unsound: `lib.rs` is shared across ABIs while the binaries are not, and it is only
+  rewritten when a rebuild fires. Alternate 3.13 → 3.14t → 3.13 and the third run finds a
+  matching checksum, reuses its binary and never rewrites the source — leaving a 3.13
+  binary loaded from a `lib.rs` stamped `314t`. It misleads at exactly the moment a stale
+  binary is suspected, which was the case it existed to serve.
+- Bonus: ABI-independent sources end the spurious churn where every interpreter switch
+  rewrote `lib.rs`, invalidating cargo's fingerprint for our crate on both sides of the
+  switch. Each ABI's tree now stays warm.
+- Safe against the #13 follow-up to share a target dir across modules, since the proposed
+  `extmodule_root/<abi-tag>/` layout stays partitioned by ABI. If that partitioning were
+  ever removed, the checksum would have to become ABI-sensitive again.
+
+**Follow-ups** — None; the #13 follow-ups noted below are unaffected.
+
 ## 2026-07-10 — Fold the Python ABI into the module checksum (issue #13)
 
 **Why** — A compiled extension is specific to the interpreter that built it: a
