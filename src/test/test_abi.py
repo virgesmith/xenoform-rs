@@ -3,7 +3,7 @@ import sysconfig
 
 import pytest
 
-from xenoform_rs import rustmodule, utils
+from xenoform_rs import utils
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 
 
@@ -42,15 +42,12 @@ def test_target_dir_isolates_by_abi(monkeypatch: pytest.MonkeyPatch) -> None:
     assert utils.get_target_dir(module_dir) != default
 
 
-def test_abi_embedded_in_source_and_folded_into_checksum(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_source_is_abi_independent() -> None:
+    """The target dir isolates by ABI, so the sources must not: a rebuild under a different interpreter
+    must not perturb a source file shared by every ABI."""
     spec = _make_spec()
     _, code, checksum = spec.make_source("abimod")
-    assert f"// Built for Python ABI: {utils.python_abi()}" in code
+    assert utils.python_abi() not in code
 
     _, _, checksum_again = spec.make_source("abimod")
     assert checksum == checksum_again
-
-    monkeypatch.setattr(rustmodule, "python_abi", lambda: ".cp999t-other_platform.xyz")
-    _, code_other_abi, checksum_other_abi = spec.make_source("abimod")
-    assert "// Built for Python ABI: .cp999t-other_platform.xyz" in code_other_abi
-    assert checksum_other_abi != checksum
