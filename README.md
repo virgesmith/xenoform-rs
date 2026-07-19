@@ -215,12 +215,21 @@ def calc_dist_matrix_py(p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
 
 bearing in mind there is some redundancy here as the resulting matrix is symmetric; however vectorisation with
 redundancy will always win the tradeoff against loops with no redundancy. But a rust implementation is significantly
-faster, partly because it can avoid the redundant computations:
+faster, and here we go a step further and parallelise it with [`rayon`](https://crates.io/crates/rayon). The matrix is
+filled one row per parallel task: `par_chunks_mut(n)` hands each task a disjoint mutable row, so the writes are
+race-free without any `unsafe` and without threads mirroring each other's cells. This computes the full matrix rather
+than exploiting symmetry, but the embarrassingly parallel scaling more than pays for the extra arithmetic:
 
 ```py
 @rust(
-    dependencies=[rust_dependency("numpy", version="0.28")],
-    imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"],
+    dependencies=[
+        rust_dependency("numpy", version="0.28"),
+        rust_dependency("rayon", version="1.11"),
+    ],
+    imports=[
+        "numpy::{PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2}",
+        "rayon::prelude::*",
+    ],
 )
 def calc_dist_matrix_rust(
     points: Annotated[npt.NDArray[np.float64], "PyReadonlyArray2<f64>"],
@@ -233,25 +242,21 @@ def calc_dist_matrix_rust(
     let shape = points.shape();
     let (n, d) = (shape[0], shape[1]);
 
-    let result = PyArray2::zeros(py, [n, n], false);
-    let mut r = unsafe { result.as_array_mut() };
-
-    for i in 0..n {
-        for j in i + 1..n {
+    // fill a plain Vec in parallel: each row is a disjoint chunk, so there are no races
+    // and no need to mirror the upper triangle across threads.
+    let mut data = vec![0.0f64; n * n];
+    data.par_chunks_mut(n).enumerate().for_each(|(i, row)| {
+        for j in 0..n {
             let mut sum = 0.0;
             for k in 0..d {
-                let diff = points.get([i, k]).unwrap() - points.get([j, k]).unwrap();
+                let diff = points[[i, k]] - points[[j, k]];
                 sum += diff * diff;
             }
-            let dist = sum.sqrt();
-            if let Some(x) = r.get_mut([i, j]) {
-                *x = dist;
-            }
-            if let Some(x) = r.get_mut([j, i]) {
-                *x = dist;
-            }
+            row[j] = sum.sqrt();
         }
-    }
+    });
+
+    let result = PyArray1::from_vec(py, data).reshape([n, n])?;
     Ok(result)
 ```
 
@@ -261,11 +266,11 @@ def calc_dist_matrix_rust(
 
 N | py (ms) | rust (ms) | speedup
 -:|--------:|----------:|-----------:
-100 | 0.4 | 1.3 | -68%
-300 | 3.6 | 0.2 | 1907%
-1000 | 28.7 | 2.3 | 1162%
-3000 | 208.1 | 20.8 | 902%
-10000 | 2270.2 | 236.2 | 861%
+100 | 0.7 | 0.4 | 98%
+300 | 7.4 | 0.4 | 1580%
+1000 | 41.9 | 1.1 | 3600%
+3000 | 319.1 | 6.8 | 4608%
+10000 | 3954.3 | 69.8 | 5567%
 
 Full code is in [examples/distance_matrix.py](examples/distance_matrix.py).
 
