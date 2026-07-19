@@ -22,6 +22,45 @@ Entry template:
 
 ---
 
+## 2026-07-19 — Parallelise the distance-matrix example with rayon (#21)
+
+**Why** — The distance-matrix example computed its rust kernel single-threaded, so it
+demonstrated only the compiled-loop win, not multi-core scaling. `rayon` was already in
+the toolbox from the Monte Carlo example (#18); applying it here is a natural,
+self-contained showcase of parallelism on a numpy-backed operation.
+
+**What** — Replaced the sequential upper-triangle kernel in
+`examples/distance_matrix.py` with a rayon-parallel fill: `par_chunks_mut(n)` hands each
+task one disjoint row of a flat `Vec<f64>`, which is then reshaped into the `PyArray2`
+result. Added a warm-up call before the timing loop, updated the README section (prose,
+code, and timing table), and bumped the version to 0.1.5. The loop example was also
+switched from `process_time` to `perf_counter` with its own warm-up.
+
+**Design decisions**
+- *Dropped the symmetry optimisation rather than parallelising it.* The original kernel
+  filled only the upper triangle and mirrored each value into `[j, i]`. That mirror-write
+  is exactly what blocks a naive parallelisation over `i`: the task for row `i` writes into
+  row `j` while the task for row `j` also writes row `j` — a data race. Filling one full
+  row per task makes each task's output disjoint, so the borrow checker proves the writes
+  race-free with no `unsafe`. The cost is computing every pair twice (~2× arithmetic), but
+  the embarrassingly parallel scaling more than pays for it: the 10000-point speedup goes
+  from ~9× to ~50–57× over single-threaded numpy.
+- *Fill a plain `Vec` then reshape, rather than writing into `PyArray2::zeros` via
+  `as_array_mut`.* Sharing a mutable numpy view across rayon threads would need `unsafe`
+  and manual non-aliasing reasoning; a `Vec` + `par_chunks_mut` keeps the whole thing safe,
+  and `PyArray1::from_vec(...).reshape([n, n])` is a cheap final materialisation.
+- *Warm-up call before timing.* rayon's one-off global threadpool spin-up (~370 ms on the
+  first parallel call) otherwise lands on the first timed size and misrepresents per-call
+  cost — the same reasoning as the Monte Carlo example (#18).
+- *Honest baseline framing in the README.* The ~50× headline is against *single-threaded*
+  numpy, so it bundles rust's per-element win with the core count — unlike the Monte Carlo
+  example, whose numpy baseline is already thread-sharded. The prose notes the full-matrix
+  trade-off so the comparison isn't oversold.
+
+**Follow-ups** — The numpy baseline here is single-threaded; a thread-sharded numpy
+distance matrix would isolate rust's per-core advantage (as the Monte Carlo example does),
+if a fairer head-to-head is ever wanted.
+
 ## 2026-07-16 — Drop the ABI comment from the generated source (#20)
 
 **Why** — Follow-on cleanup to the 2026-07-10 entry below, which landed two

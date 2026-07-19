@@ -15,8 +15,14 @@ def calc_dist_matrix_py(p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
 
 
 @rust(
-    dependencies=[rust_dependency("numpy", version="0.28")],
-    imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"],
+    dependencies=[
+        rust_dependency("numpy", version="0.28"),
+        rust_dependency("rayon", version="1.11"),
+    ],
+    imports=[
+        "numpy::{PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2}",
+        "rayon::prelude::*",
+    ],
     profile={"strip": "symbols"},
 )
 def calc_dist_matrix_rust(
@@ -27,44 +33,43 @@ def calc_dist_matrix_rust(
     let shape = points.shape();
     let (n, d) = (shape[0], shape[1]);
 
-    let result = PyArray2::zeros(py, [n, n], false);
-    let mut r = unsafe { result.as_array_mut() };
-
-    for i in 0..n {
-        for j in i + 1..n {
+    // fill a plain Vec in parallel: each row is a disjoint chunk, so there are no races
+    // and no need to mirror the upper triangle across threads.
+    let mut data = vec![0.0f64; n * n];
+    data.par_chunks_mut(n).enumerate().for_each(|(i, row)| {
+        for j in 0..n {
             let mut sum = 0.0;
             for k in 0..d {
-                let diff = points.get([i, k]).unwrap() - points.get([j, k]).unwrap();
+                let diff = points[[i, k]] - points[[j, k]];
                 sum += diff * diff;
             }
-            let dist = sum.sqrt();
-            if let Some(x) = r.get_mut([i, j]) {
-                *x = dist;
-            }
-            if let Some(x) = r.get_mut([j, i]) {
-                *x = dist;
-            }
+            row[j] = sum.sqrt();
         }
-    }
+    });
+
+    let result = PyArray1::from_vec(py, data).reshape([n, n])?;
     Ok(result)
     """
 
 
 if __name__ == "__main__":
+    # exclude the one-off module import and rayon threadpool spin-up from the timings
+    calc_dist_matrix_rust(np.random.uniform(size=(2, 3)))
+
     print("N | py (ms) | rust (ms) | speedup")
     print("-:|--------:|----------:|-----------:")
 
     for size in [100, 300, 1000, 3000, 10000]:
         p = np.random.uniform(size=(size, 3))
 
-        start = time.process_time()
+        start = time.perf_counter()
         dist_p = calc_dist_matrix_py(p)
-        elapsed_p = time.process_time() - start
+        elapsed_p = time.perf_counter() - start
 
-        start = time.process_time()
+        start = time.perf_counter()
         dist_r = calc_dist_matrix_rust(p)
-        # windows process_time() is inaccurate
-        elapsed_r = (time.process_time() - start) or 1.0
+        # windows perf_counter() is inaccurate
+        elapsed_r = (time.perf_counter() - start) or 1.0
 
         assert np.abs(dist_r - dist_p).max() < 1e-15
 
