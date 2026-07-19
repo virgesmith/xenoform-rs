@@ -1,6 +1,6 @@
 """Example of unvectorisable function performance - python vs inline rust"""
 
-from time import process_time
+from time import perf_counter
 from typing import Annotated
 
 import numpy as np
@@ -62,21 +62,29 @@ def main() -> None:
     rng = np.random.default_rng(19937)
     rate = 0.001
 
+    # Preload the compiled function before any timing, so everything is compiled and loaded before
+    # the clock starts. The one-off first-call cost is compiling the extension if it is missing or
+    # out of date, otherwise loading the module, checking it is up-to-date, and diverting the Python
+    # stub to the C++ implementation. Warming it up here keeps that cost out of the per-call timings
+    # below.
+    warmup = pd.Series(index=range(1), data=rng.integers(-100, 101, size=1), name="cashflow")
+    calc_balances_rust(warmup, rate)
+
     print("N | py (ms) | rust (ms) | speedup")
     print("-:|--------:|----------:|-----------:")
     for n in [1000, 10000, 100000, 1000000, 10000000]:
         data = pd.Series(index=range(n), data=rng.integers(-100, 101, size=n), name="cashflow")
 
-        start = process_time()
+        start = perf_counter()
         py_result = calc_balances_py(data, rate)
-        py_time = process_time() - start
+        py_time = perf_counter() - start
 
-        start = process_time()
+        start = perf_counter()
         # Although pyo3/rust doesn't understand the type pd.Series, it can use the PyAny API to manipulate
         # and create instances of this type
         rust_result = calc_balances_rust(data, rate)
-        # windows process_time() is inaccurate
-        rust_time = (process_time() - start) or 1.0
+        # windows perf_counter() is inaccurate
+        rust_time = (perf_counter() - start) or 1.0
 
         print(f"{n} | {py_time * 1000:.1f} | {rust_time * 1000:.1f} | {(py_time / rust_time - 1.0):.0%}")
         assert py_result.equals(rust_result)
