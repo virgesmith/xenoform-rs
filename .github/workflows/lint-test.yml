@@ -42,3 +42,4 @@ jobs:
         uv run examples/loop.py
         uv run examples/distance_matrix.py
         uv run examples/monte_carlo.py
+        uv run examples/levenshtein.py
