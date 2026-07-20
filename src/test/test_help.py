@@ -16,7 +16,7 @@ def test_help_format() -> None:
     )
 
 
-@rust(py=False, help=docstr, verbose=True)
+@rust(py=False, help=docstr)
 def documented_function(n: int, *, x: float = 3.1) -> float:  # ty: ignore[empty-body]
     """
     Ok(n as f64 + x)
