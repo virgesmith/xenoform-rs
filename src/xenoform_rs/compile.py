@@ -24,6 +24,28 @@ from xenoform_rs.utils import (
 logger = logging.getLogger(__name__)
 
 
+def _configure_verbose_logging() -> None:
+    """Turn on INFO-level logging for this library's own logger.
+
+    Deliberately does not touch `logging.basicConfig`/the root logger - doing so would
+    clobber whatever logging configuration the host application has already set up.
+    Instead this gives our namespaced logger its own level and handler and stops it
+    propagating to the root logger, so it's fully isolated from - and never interferes
+    with - the host's config either way.
+    """
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter(
+                fmt="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
+                datefmt="%H:%M:%S",
+            )
+        )
+        logger.addHandler(handler)
+        logger.propagate = False
+
+
 extmodule_root = get_config().extmodule_root
 
 _module_registry: dict[str, ModuleSpec] = defaultdict(ModuleSpec)
@@ -303,7 +325,6 @@ def rust(
     profile: dict[str, str] | None = None,
     edition: str | None = None,
     help: str | None = None,
-    verbose: bool = False,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator factory for compiling rust function implementations into extension modules.
@@ -312,13 +333,8 @@ def rust(
         Callable[..., Callable[..., Any]]: A function that when called, will return the compiled function.
     """
 
-    if verbose:
-        logging.basicConfig(
-            format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
-            level=logging.INFO,
-            datefmt="%H:%M:%S",
-            force=True,
-        )
+    if get_config().verbose is not None:
+        _configure_verbose_logging()
 
     def register_function(func: Callable[P, R]) -> Callable[P, R]:
         """Decorator to compile a Python function to Rust and replace it with the compiled version."""

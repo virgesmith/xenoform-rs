@@ -22,6 +22,51 @@ Entry template:
 
 ---
 
+## 2026-07-20 — Move `verbose` to config, stop clobbering root logging (#13)
+
+**Why** — Two related #13 items. `verbose` was a per-call `rust(...)` decorator arg,
+which meant every decorated function had to repeat it and it couldn't be toggled
+globally (e.g. for CI or debugging someone else's code) without editing source.
+Separately, `verbose=True` called `logging.basicConfig(force=True)`, which
+reconfigures the *root* logger — `force=True` strips out any handlers the host
+application had already installed, silently breaking their logging setup.
+
+**What** — `verbose` moved from a `rust()` kwarg to `XenoformConfig.verbose: bool`
+(env var `XENOFORM_RS_VERBOSE`), picked up on each `rust()` decoration via
+`get_config().verbose`. Replaced the `basicConfig` call with a new
+`_configure_verbose_logging()` that only touches the library's own
+`logging.getLogger(__name__)`: sets its level to INFO, attaches a `StreamHandler`
+with the same timestamped format, and sets `propagate = False` so the messages
+never reach the root logger (or a host's handlers on it) at all — fully isolated in
+both directions. Guarded with `if not logger.handlers` so repeated `rust()` calls
+(one per decorated function) don't stack duplicate handlers. Updated the two tests
+that passed `verbose=True` to the decorator (now a `TypeError`, the arg is gone),
+added `test_verbose_logging.py` covering isolation-from-root and idempotency, and
+updated the README's decorator-parameter table and troubleshooting section.
+
+**Design decisions**
+- *`propagate = False` rather than leaving the default `True`.* The point of #13 was
+  isolation; leaving propagation on would print duplicate lines whenever a host
+  app's root logger also had a handler, and would still let host root-logger *filters*
+  suppress our messages depending on host config — neither of which "isolated" was
+  meant to allow.
+- *`str | None`, matching `disable_ft`'s existing pattern, over `bool`* (reverted after
+  first trying `bool`). pydantic-settings' bool parsing rejects an empty string, so
+  `XENOFORM_RS_VERBOSE=` (set but empty - the natural way to flip on a flag from a
+  shell one-liner, `XENOFORM_RS_VERBOSE= uv run ...`) would fail validation instead of
+  enabling verbose logging. `str | None` sidesteps that: any set value, including
+  empty, is truthy for our purposes, checked the same way as `disable_ft` via
+  `is not None`.
+- *Read via `get_config().verbose` at each `rust()` call rather than snapshotted at
+  import*, unlike `extmodule_root` (a pre-existing, separately-tracked #13 item). Since
+  `rust()` runs once per decorated function rather than once per process, there's no
+  extra cost to reading it live, and it means `XENOFORM_RS_VERBOSE` set later in a
+  process (e.g. by a test fixture) is honoured by decorations that haven't run yet.
+
+**Follow-ups** — None for this item. The rest of #13 (shared cargo target dir, sidecar
+checksum file, error surfacing, configurable timeout, lazy rustc check, build
+locking, `int → i64`, and the `extmodule_root` snapshot-at-import item) is untouched.
+
 ## 2026-07-19 — Parallelise the distance-matrix example with rayon (#21)
 
 **Why** — The distance-matrix example computed its rust kernel single-threaded, so it

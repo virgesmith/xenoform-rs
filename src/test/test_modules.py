@@ -3,7 +3,7 @@ from typing import Annotated
 from xenoform_rs import rust
 
 
-@rust(py=False, modules=["src/test/fibonacci.rs"], verbose=True)
+@rust(py=False, modules=["src/test/fibonacci.rs"])
 def fibonacci(n: Annotated[int, "u64"]) -> Annotated[int, "u64"]:  # ty:ignore[empty-body]
     """
     Ok(fibonacci::fib(n))

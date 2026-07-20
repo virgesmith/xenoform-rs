@@ -112,7 +112,6 @@ name | type | default | description
 `profile` | `dict[str, str] \| None` | `None` | Overrides to (release mode) [profile](https://doc.rust-lang.org/cargo/reference/profiles.html), e.g. optimisation level, strip symbols, etc.
 `edition` | `str` | `"2024"` | The rust edition
 `help` | `str \| None` | `None` | Docstring for the function
-`verbose` | `bool` | `False` | enable debug logging
 
 ## Performance
 
@@ -486,6 +485,13 @@ By default, compiled modules are placed in an `ext` subdirectory of your project
 it can be overridden using the environment variable `XENOFORM_RS_EXTMODULE_ROOT`. NB avoid using characters in paths
 (e.g. space, hyphen) that would not be valid in a python module name.
 
+### Verbose logging
+
+Setting the environment variable `XENOFORM_RS_VERBOSE` (to any value, including empty, e.g.
+`XENOFORM_RS_VERBOSE=`) turns on INFO-level logging of the compile/check/import steps, with timings. This
+configures xenoform-rs's own logger only - it never touches `logging.basicConfig`/the root logger, so it
+won't interfere with a host application's own logging setup.
+
 ### Free-threaded Interpreter
 
 By default, if the interpreter is free-threaded, extension modules will be built without the GIL. This requires the extension code to be threadsafe. If xenoform detects an environment variable `XENOFORM_RS_DISABLE_FT`, free-threading is
@@ -497,7 +503,7 @@ The generated module source code is written to `src/lib.rs` in a module-specific
 Cargo build output is redirected to `build.log` in the that folder. The actual binary will be found in the
 `target/release` subfolder.
 
-Adding `verbose=True` to the `rust(...)` decorator logs the steps taken, with timings, e.g.:
+Setting `XENOFORM_RS_VERBOSE=1` logs the steps taken, with timings, e.g.:
 
 ```txt
 $ uv run examples/loop.py
