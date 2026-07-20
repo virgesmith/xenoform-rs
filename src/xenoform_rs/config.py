@@ -4,7 +4,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class XenoformConfig(BaseSettings):
+class XenoformRsConfig(BaseSettings):
     rustfmt: str = "file"
     disable_ft: str | None = None
     extmodule_root: Path = Path("./ext")
@@ -15,6 +15,6 @@ class XenoformConfig(BaseSettings):
 
 
 @cache
-def get_config() -> XenoformConfig:
+def get_config() -> XenoformRsConfig:
     """Cached config"""
-    return XenoformConfig()
+    return XenoformRsConfig()
