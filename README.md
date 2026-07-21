@@ -376,7 +376,27 @@ N | numpy+threads (ms) | rust+rayon (ms) | speedup
 300000 | 174.7 | 67.7 | 158%
 1000000 | 545.9 | 227.7 | 140%
 
-**Why free-threading (`3.14t`) barely changes these numbers** - a result that surprises people expecting the
+Peak memory tells a starker story than wall-clock time. Both implementations share the same ~49MB
+baseline (interpreter + numpy + xenoform_rs import); measured from there, one grows linearly with
+`n_paths` and the other barely moves (linux, python 3.13):
+
+N | numpy+threads (MB) | rust+rayon (MB)
+-:|--------:|--------:
+100000 | 241.2 | 49.5
+300000 | 625.1 | 49.8
+1000000 | 1972.3 | 50.1
+
+`rust+rayon`'s peak never rises meaningfully above the baseline - each path lives in a register, and
+the only heap growth left is rayon's fixed per-thread stacks. `numpy+threads` grows in lock-step with
+`n_paths × n_steps × 8 bytes`, because the vectorised implementation must materialise the whole matrix
+(see above) - ~39x more memory than rust at a million paths. Peak RSS was read via
+`resource.getrusage(RUSAGE_SELF).ru_maxrss` (KiB on linux, bytes on macOS), each implementation
+measured in its own fresh subprocess: `ru_maxrss` is a process-lifetime high-water mark that never
+decreases, so profiling both variants in one process would leak whichever ran first (typically
+numpy's ~2GB) into the second implementation's reading. This was a one-off local measurement, not a
+script wired into the example or CI.
+
+**Why free-threading (`3.14t`) barely changes the performance numbers** - a result that surprises people expecting the
 free-threaded build to be the enabler here. Free-threading only helps when the GIL is what stops threads running
 in parallel, and for this workload it never was:
 
@@ -394,6 +414,87 @@ Both implementations are also reproducible: the result never depends on thread s
 (or shard's) random draws are pinned by its index, not by which thread happens to compute it.
 
 Full code is in [examples/monte_carlo.py](examples/monte_carlo.py).
+
+### Levenshtein distance
+
+This example computes the edit distance from a query word to every word in a wordlist, using the classic
+Wagner-Fischer dynamic-programming recurrence. Unlike the numeric examples above, there's no vectorised numpy
+alternative here - the recurrence is over strings, one character comparison at a time - so this compares plain
+python against inline rust, and shows the win isn't limited to numeric code:
+
+```py
+def levenshtein_py(a: str, b: str) -> int:
+    "Wagner-Fischer edit distance: O(len(a) * len(b)) time, O(min(len(a), len(b))) space via a rolling row"
+    if len(a) < len(b):
+        a, b = b, a
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        curr = [i] + [0] * len(b)
+        for j, cb in enumerate(b, 1):
+            cost = 0 if ca == cb else 1
+            curr[j] = min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+        prev = curr
+    return prev[-1]
+
+
+def levenshtein_distances_py(query: str, wordlist: list[str]) -> list[int]:
+    "Edit distance from query to every word in wordlist"
+    return [levenshtein_py(query, w) for w in wordlist]
+```
+
+The rust version is the same algorithm, one word at a time. It also demonstrates two ends of the default type
+mapping: `list[str]` and the return type `list[int]` translate to `Vec<String>`/`Vec<i32>` with no annotation
+needed, while `query` is overridden to `&str` (via `Annotated`) to borrow rather than clone the one string
+compared against every word:
+
+```py
+@rust(py=False, profile={"strip": "symbols"})
+def levenshtein_distances_rust(
+    query: Annotated[str, "&str"], wordlist: list[str]
+) -> list[int]:
+    """
+```
+
+```rs
+    let qb = query.as_bytes();
+    Ok(wordlist
+        .iter()
+        .map(|w| {
+            let wb = w.as_bytes();
+            let (long, short) = if qb.len() >= wb.len() { (qb, wb) } else { (wb, qb) };
+            let mut prev: Vec<usize> = (0..=short.len()).collect();
+            for (i, &lc) in long.iter().enumerate() {
+                let mut curr = vec![0usize; short.len() + 1];
+                curr[0] = i + 1;
+                for (j, &sc) in short.iter().enumerate() {
+                    let cost = usize::from(lc != sc);
+                    curr[j + 1] = (curr[j] + 1).min(prev[j + 1] + 1).min(prev[j] + cost);
+                }
+                prev = curr;
+            }
+            prev[short.len()] as i32
+        })
+        .collect())
+```
+
+```py
+    """
+```
+
+Performance comparison (synthetic lowercase wordlist, word lengths 3-12, python 3.14):
+
+N | py (ms) | rust (ms) | speedup
+-:|--------:|----------:|-----------:
+1000 | 7.0 | 0.3 | 2570%
+10000 | 68.2 | 2.3 | 2808%
+100000 | 672.3 | 22.6 | 2872%
+1000000 | 6867.8 | 235.9 | 2811%
+
+Both allocate a fresh DP row per character of the longer string in each comparison - the rust version isn't
+hand-optimised beyond the python baseline's own allocation pattern, so the ~29x speedup is purely the win from
+running the same algorithm compiled rather than interpreted, not from a smarter algorithm or less allocation.
+
+Full code is in [examples/levenshtein.py](examples/levenshtein.py).
 
 ## Type Translations
 
@@ -416,7 +517,7 @@ Python | rust
 `str` | `String`
 `np.ndarray` | `PyReadonlyArrayDyn`
 `bytes` | `&'py [u8]`
-`bytearray` | `&Bound<'py, PyByteArray`
+`bytearray` | `&Bound<'py, PyByteArray>`
 `list` | `Vec`
 `set` | `HashSet`
 `frozenset` | `HashSet`

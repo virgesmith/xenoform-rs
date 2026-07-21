@@ -22,6 +22,108 @@ Entry template:
 
 ---
 
+## 2026-07-20 — Add Levenshtein distance example (issue #16 item 3)
+
+**Why** — Issue #16 proposed four examples to showcase rust's performance win beyond
+numeric code; item 3 specifically wanted a "String/DP-heavy workload, demonstrating
+the win isn't limited to numeric code (and exercises `String`/`&str` argument
+handling)". Items 1 and 4 (Mandelbrot, N-body) remain open; item 2 (Monte Carlo) was
+done in #18.
+
+**What** — Added `examples/levenshtein.py`: `levenshtein_distances_py` computes the
+Wagner-Fischer edit distance (rolling-row DP) from a query word to every word in a
+synthetic, seeded wordlist; `levenshtein_distances_rust` is the `@rust`-decorated,
+single-threaded equivalent. Wired into CI's "Run examples" step and the
+`AGENTS.md` Quality Gates / Repository Layout lists, with a matching new "Levenshtein
+distance" README section (prose, code, timing table).
+
+**Design decisions**
+- *No numpy baseline, unlike the other three examples* — the DP recurrence is over
+  strings one character at a time; there's no natural vectorised form the way there is
+  for the numeric examples, so this is deliberately a plain-python-vs-rust comparison
+  (like `loop.py`), which is itself the point: the win isn't limited to workloads numpy
+  can also accelerate.
+- *`query: Annotated[str, "&str"]`, `wordlist: list[str]`* — chosen to exercise both
+  ends of the type-mapping table in one signature: `list[str]`/`list[int]` fall out of
+  the *default* mapping (`Vec<String>`/`Vec<i32>`, no annotation needed), while `query`
+  uses the `Annotated` override to borrow (`&str`) rather than clone the one string
+  compared against every word in the list - the override mechanism actually earning
+  its keep here, not just demonstrated for its own sake.
+- *Single-threaded rust, no rayon* (maintainer's call, offered as an explicit either/or)
+  — each word's distance is independent so `into_par_iter()` would be a one-line
+  addition, but `distance_matrix.py` and `monte_carlo.py` already cover the rayon
+  story, and issue #16 framed this example's point as DP/string handling, not
+  parallelism. Mirrors how `distance_matrix.py` itself shipped single-threaded first
+  and was parallelised later in a separate PR (#21) - left as a natural, low-risk
+  follow-up rather than conflating two lessons in one diff.
+- *Rust allocates a fresh DP row per character, matching the python baseline's own
+  allocation pattern* rather than hand-optimising with a reused scratch buffer - keeps
+  the comparison honest (same algorithm, compiled vs interpreted) rather than
+  bundling an algorithmic/allocation improvement into the speedup number, the same
+  reasoning as the Monte Carlo and distance-matrix examples' baseline choices.
+- *Synthetic seeded wordlist (`random.Random(19937)`, lowercase, length 3-12) rather
+  than a real dictionary file* — every existing example generates its own data rather
+  than depending on an external file or OS-provided wordlist (e.g. `/usr/share/dict/words`,
+  which isn't reliably present on Windows CI runners); this keeps the example
+  self-contained and reproducible across the whole CI matrix.
+- *Wordlist sizes capped at 1,000,000* (1,000/10,000/100,000/1,000,000, mirroring
+  `loop.py`'s range one step short) — calibrated empirically: the pure-python baseline
+  costs a fixed ~6.7us/word regardless of list size, so 1M words costs ~7.5s, the same
+  order of magnitude as `loop.py`'s slowest case (1.9s at 10M rows). Going a further
+  order of magnitude (10M) would push the python baseline past a minute across the CI
+  matrix for no additional insight, since the ~28x speedup is already flat across
+  sizes.
+- *Exact-equality assertion between implementations* rather than a statistical bound
+  (unlike Monte Carlo) — edit distance is a deterministic integer computation with no
+  RNG in the algorithm itself (only in generating the wordlist), so the two
+  implementations must agree exactly, not just within error bounds.
+
+**Follow-ups** — Parallelising `levenshtein_distances_rust` across the wordlist with
+`rayon` is a natural, low-risk follow-up (each word is independent). Items 1 and 4 of
+#16 (Mandelbrot, N-body) remain.
+
+## 2026-07-20 — Document Monte Carlo memory profiling
+
+**Why** — The Monte Carlo example's README section already compared wall-clock time
+for `numpy+threads` vs `rust+rayon`, but the design decisions behind it (#18) had
+already identified memory as the more dramatic difference — numpy must materialise
+the whole `(n_paths, n_steps)` matrix while rust holds each path in a register — yet
+that was never actually measured, only asserted.
+
+**What** — Ran a one-off local peak-RSS measurement of both implementations at the
+same three path counts as the timing table (100k/300k/1M) and added the results as a
+new subsection in the README, alongside the existing timing table. No code changed in
+`examples/monte_carlo.py`; this is a documentation-only update.
+
+**Design decisions**
+- *Peak RSS via `resource.getrusage(RUSAGE_SELF).ru_maxrss`, not `tracemalloc`* —
+  `tracemalloc` only sees Python-domain heap allocations. It's blind to rust's own
+  allocator entirely (the very thing being measured), and doesn't cleanly see numpy's
+  array buffers either without relying on numpy's undocumented tracemalloc-domain
+  registration. OS-level RSS is allocator-agnostic and answers the question that
+  actually matters (the 7GB CI-runner OOM risk noted in #18).
+- *Each (implementation, n_paths) measured in its own fresh subprocess* — `ru_maxrss`
+  is a process-lifetime high-water mark that never decreases. Measuring both
+  implementations sequentially in one process (as the timing loop does) would leak
+  whichever ran first — typically numpy's ~2GB — into every subsequent reading,
+  including rust's. Isolating each call in a fresh subprocess makes each number
+  reflect only that one call.
+- *One-off measurement, not wired into the script or CI* (per maintainer's steer) —
+  a permanent version would need either an OS-conditional fallback (`resource` is
+  POSIX-only, and CI runs Windows) or a new dependency (e.g. `psutil`) to poll a
+  child process cross-platform, plus 6 extra subprocess spawns on every CI run for
+  little ongoing benefit. Simpler to record the numbers once and revisit if the
+  library or example changes enough to invalidate them.
+- *Numbers are linux/python 3.13, same box as the existing timing table (22 cores)* —
+  not re-measured per-OS; `ru_maxrss` units differ between linux (KiB) and macOS
+  (bytes), called out in the README so anyone reproducing this on macOS doesn't get
+  caught out.
+
+**Follow-ups** — If a future example needs memory regression protection in CI (rather
+than a one-off illustrative number), revisit the subprocess-isolation approach above
+and decide then whether `psutil` earns its keep as a new `examples`-extra dependency
+for Windows coverage.
+
 ## 2026-07-20 — Move `verbose` to config, stop clobbering root logging (#13)
 
 **Why** — Two related #13 items. `verbose` was a per-call `rust(...)` decorator arg,
