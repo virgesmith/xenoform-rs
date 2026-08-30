@@ -2,10 +2,6 @@
 
 Write and execute superfast *rust* inside your Python code! Here's how...
 
-> **Using an AI coding agent?** xenoform-rs ships an installable [agent skill](#agent-skill) —
-> run `uv run xenoform-rs-skill --install` and your agent gets a built-in reference for writing
-> `@rust`-decorated code correctly, without needing this whole README in context.
-
 Write a type-annotated function or method definition **in python**, add the `rust` decorator and put the **rust
 implementation** in a docstr:
 
@@ -76,6 +72,10 @@ Install the package
 ```sh
 uv add xenoform-rs  # or pip install xenoform-rs
 ```
+
+> **Using an AI coding agent?** xenoform-rs ships an installable [agent skill](#agent-skill) —
+> run `uv run xenoform-rs-skill --install` and your agent gets a built-in reference for writing
+> `@rust`-decorated code correctly, without needing this whole README in context.
 
 Simply decorate your rust-implemented functions with the `rust` decorator factory - it handles all the configuration and compilation. Here's a function that counts the elements in a multidimensional array:
 
