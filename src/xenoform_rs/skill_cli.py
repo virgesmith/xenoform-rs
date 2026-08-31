@@ -24,6 +24,14 @@ def _is_ours(target: Path, source: Path) -> bool:
         return False
 
 
+def _link_target(source: Path, target: Path) -> str:
+    """A relative link target, or an absolute one if there is no relative path (different windows drives)."""
+    try:
+        return os.path.relpath(source.resolve(), target.parent.resolve())
+    except ValueError:
+        return str(source.resolve())
+
+
 def _install(root: str) -> int:
     source = _source_dir()
     target = _target_path(root)
@@ -39,8 +47,7 @@ def _install(root: str) -> int:
         print(f"refusing to overwrite existing file or directory: {target}")
         return 1
 
-    rel_source = os.path.relpath(source.resolve(), target.parent.resolve())
-    target.symlink_to(rel_source, target_is_directory=True)
+    target.symlink_to(_link_target(source, target), target_is_directory=True)
     print(f"installed: {target} -> {source}")
     return 0
 
@@ -90,4 +97,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main())  # pragma: no cover - console script entry point

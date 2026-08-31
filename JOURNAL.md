@@ -52,6 +52,13 @@ console script, `xenoform-rs-skill`, registered via `[project.scripts]` in `pypr
 - *No multi-harness detection, no global-install mode, no confirmation prompts* — deliberately
   much simpler than Streamlit's installer: one skill, one target path, symlink-or-refuse. A
   refusal never touches a pre-existing real file/dir or a symlink this script doesn't own.
+- *The symlink target is relative where a relative path exists, absolute where none does* — a
+  relative target keeps a symlinked skill working if the project directory is moved, but on Windows
+  there is no relative path between different drives and `os.path.relpath` raises `ValueError`
+  (not `OSError`). CI hit exactly that, with the package on `D:` and pytest's `tmp_path` on `C:`,
+  failing every install/remove test on all four Windows jobs; it is also the normal end-user
+  layout of a venv on one drive and a project on another. `_link_target` falls back to an absolute
+  path there.
 - *Console-script entry point rather than a loose script* — `xenoform-rs-skill` resolves
   `Path(__file__).parent / "skill"` from wherever `xenoform_rs` is importable, so it naturally
   targets the venv it's invoked from without any explicit `.venv` path detection.
