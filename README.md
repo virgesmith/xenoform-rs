@@ -73,6 +73,10 @@ Install the package
 uv add xenoform-rs  # or pip install xenoform-rs
 ```
 
+> **Using an AI coding agent?** xenoform-rs ships an installable [agent skill](#agent-skill) —
+> run `uv run xenoform-rs-skill --install` and your agent gets a built-in reference for writing
+> `@rust`-decorated code correctly, without needing this whole README in context.
+
 Simply decorate your rust-implemented functions with the `rust` decorator factory - it handles all the configuration and compilation. Here's a function that counts the elements in a multidimensional array:
 
 ```py
@@ -99,6 +103,26 @@ def array_nelems(a: npt.NDArray[np.int64]) -> Annotated[int, "usize"]:
 if __name__ == "__main__":
     print(array_nelems(np.empty([2, 3, 5, 7], dtype=np.int64)))
 ```
+
+## Agent skill
+
+xenoform-rs ships a `SKILL.md` for AI coding agents (e.g. Claude Code) covering the `@rust`
+decorator, the type-translation tables below, and common gotchas, so an agent doesn't need this
+whole README in context to write correct `@rust`-decorated code.
+
+Install it into a project as a symlink to the version installed in the current environment:
+
+```sh
+uv run xenoform-rs-skill --install [PATH]  # default PATH: .agents
+uv run xenoform-rs-skill --remove [PATH]   # default PATH: .agents
+```
+
+(Or, without `uv`, activate the virtualenv `xenoform-rs` is installed in and drop the `uv run`
+prefix — `xenoform-rs-skill` is a normal console-script entry point, so it's only on `PATH` while
+that environment is active.)
+
+This creates (or removes) `PATH/skills/xenoform-rs`, symlinked to the skill bundled inside the
+installed `xenoform-rs` package, so it always matches the version in use.
 
 ## The `@rust` decorator factory parameters
 

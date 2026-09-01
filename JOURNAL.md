@@ -22,6 +22,52 @@ Entry template:
 
 ---
 
+## 2026-08-30 — Add installable agent skill (`xenoform-rs-skill`)
+
+**Why** — Coding agents (Claude Code and similar) write `@rust`-decorated code more reliably
+when given a compact, purpose-built reference instead of relying on the full `README.md` in
+context. Bundling one that agents can install directly makes that reference available in any
+downstream project using xenoform-rs, not just this repo.
+
+**What** — Added `src/xenoform_rs/skill/SKILL.md`, a bundled agent skill covering the `@rust`
+decorator, the type-translation table, common gotchas, config env vars, and when reaching for
+`@rust` is actually worth it (performance: unvectorisable loops, cases where compiled code beats
+even vectorised numpy, memory pressure, and non-numeric DP/string recurrences — with the
+concrete multipliers from the README's own benchmark tables). Added a `src/xenoform_rs/skill_cli.py`
+console script, `xenoform-rs-skill`, registered via `[project.scripts]` in `pyproject.toml`, with
+`--install [PATH]` / `--remove [PATH]` (default `PATH=.agents`), plus tests in
+`src/test/test_skill_cli.py` and a new "Agent skill" section in `README.md`.
+
+**Design decisions**
+- *Symlink into the target project rather than copy* — the target
+  (`PATH/skills/xenoform-rs`) links to the `skill/` directory shipped inside whatever
+  `xenoform-rs` is installed in the active environment, so the skill content always matches the
+  installed version with nothing to go stale. Modelled on Streamlit's `streamlit skills` CLI
+  (`streamlit/web/skills.py` in the installed Streamlit package), which uses the same
+  project-symlink approach for the same reason.
+- *Bundled inside the package (`src/xenoform_rs/skill/`) rather than fetched from a URL* — no
+  network dependency for install, and confirmed (via `unzip -l` on a built wheel) that
+  `uv_build` already packages every non-`.py` file under `src/xenoform_rs/` with no extra
+  packaging config, same as the existing `py.typed` marker.
+- *No multi-harness detection, no global-install mode, no confirmation prompts* — deliberately
+  much simpler than Streamlit's installer: one skill, one target path, symlink-or-refuse. A
+  refusal never touches a pre-existing real file/dir or a symlink this script doesn't own.
+- *The symlink target is relative where a relative path exists, absolute where none does* — a
+  relative target keeps a symlinked skill working if the project directory is moved, but on Windows
+  there is no relative path between different drives and `os.path.relpath` raises `ValueError`
+  (not `OSError`). CI hit exactly that, with the package on `D:` and pytest's `tmp_path` on `C:`,
+  failing every install/remove test on all four Windows jobs; it is also the normal end-user
+  layout of a venv on one drive and a project on another. `_link_target` falls back to an absolute
+  path there.
+- *Console-script entry point rather than a loose script* — `xenoform-rs-skill` resolves
+  `Path(__file__).parent / "skill"` from wherever `xenoform_rs` is importable, so it naturally
+  targets the venv it's invoked from without any explicit `.venv` path detection.
+
+**Follow-ups** — Only targets `PATH/skills/xenoform-rs` (default `.agents`); could add
+multi-harness target dirs (e.g. `.claude/skills`) later the way Streamlit does, if requested.
+
+---
+
 ## 2026-07-20 — Add Levenshtein distance example (issue #16 item 3)
 
 **Why** — Issue #16 proposed four examples to showcase rust's performance win beyond
