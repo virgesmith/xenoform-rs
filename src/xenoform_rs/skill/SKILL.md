@@ -97,7 +97,7 @@ exception.
 | `np.float32` / `np.float64` | `f32` / `f64` |
 | `complex` / `np.complex128` | `&Bound<'py, PyComplex>` |
 | `str` | `String` |
-| `npt.NDArray` | `PyReadonlyArrayDyn` |
+| `np.ndarray` / `npt.NDArray` | `PyReadonlyArrayDyn` |
 | `bytes` | `&'py [u8]` |
 | `bytearray` | `&Bound<'py, PyByteArray>` |
 | `list` | `Vec` |

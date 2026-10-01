@@ -541,7 +541,7 @@ Python | rust
 `complex` | `&Bound<'py, PyComplex>`
 `np.complex128` | `&Bound<'py, PyComplex>`
 `str` | `String`
-`npt.NDArray` | `PyReadonlyArrayDyn`
+`np.ndarray` / `npt.NDArray` | `PyReadonlyArrayDyn`
 `bytes` | `&'py [u8]`
 `bytearray` | `&Bound<'py, PyByteArray>`
 `list` | `Vec`

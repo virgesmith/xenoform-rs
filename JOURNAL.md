@@ -33,10 +33,10 @@ surfaced new diagnostics.
 **What**
 - Bumped the version to 0.1.6 and the pre-commit hooks (uv 0.12.21, ruff v0.16.9, ty v0.0.84), and
   refreshed `uv.lock` (numpy 2.4.4 → 2.5.3, among others).
-- Changed the `DEFAULT_TYPE_MAPPING` key for `PyReadonlyArrayDyn` from `np.ndarray` to
-  `npt.NDArray`, and updated the type tables in `README.md` and `SKILL.md` to match.
+- Added `npt.NDArray` as a `DEFAULT_TYPE_MAPPING` key for `PyReadonlyArrayDyn` alongside the
+  existing `np.ndarray` key, and listed both in the type tables in `README.md` and `SKILL.md`.
 - Added `# ty: ignore[invalid-argument-type]` to the two `translate_type(npt.NDArray[...])` calls in
-  `test_types.py`.
+  `test_types.py`, and a test for an explicit `np.ndarray[Any, np.dtype[np.float64]]` annotation.
 - Applied ruff 0.16's new formatting of Python code blocks in Markdown (two blank lines before
   top-level definitions) to `README.md` and `SKILL.md`.
 
@@ -45,12 +45,23 @@ surfaced new diagnostics.
   (`type NDArray[ScalarT] = ndarray[...]`). `get_origin(NDArray[np.int32])` now returns the
   `TypeAliasType` object `NDArray` rather than `np.ndarray`, so the `np.ndarray` key no longer
   matched.
-- *Key the mapping on `npt.NDArray`* rather than expanding type aliases in `PyTypeTree`. This is
-  the smallest change that fixes the documented annotation style. The alternative was to detect
+- *Key the mapping on both `np.ndarray` and `npt.NDArray`.* A first cut replaced `np.ndarray`
+  with `npt.NDArray`. That passed on numpy 2.5 but broke every `NDArray` annotation on numpy
+  2.4.x (still allowed by `numpy>=2.4.3`, and there `get_origin(NDArray[T])` is `np.ndarray`). It
+  also broke explicit `np.ndarray[shape, dtype[T]]` annotations on every version. Keeping both keys
+  handles both numpy versions and both annotation styles, at the cost of a duplicate entry (a
+  comment in `extension_types.py` explains why both are needed). Raising the floor to `numpy>=2.5`
+  was rejected: it drops users for no gain and still needs the `np.ndarray` key for explicit
+  annotations.
+- *The two keys reach the Rust type by different paths.* `np.ndarray[shape, dtype[T]]` hits the
+  `tree.type == np.ndarray` branch in `RustTypeTree.__init__`, which digs `T` out of
+  `subtypes[1]`. The numpy 2.5 alias `NDArray[T]` has a single type parameter, so the generic
+  branch produces `PyReadonlyArrayDyn<T>` directly.
+- *Not expanding type aliases in `PyTypeTree`.* The alternative was to detect
   `typing.TypeAliasType` origins and substitute the arguments into `__value__`
   (`origin.__value__[get_args(t)]`, which yields the old `ndarray[_AnyShape, dtype[T]]` shape).
-  That would work on both numpy versions and would support user-defined `type X = ...` aliases
-  too, but it touches the core translation path. It was set aside for now.
+  That would need no `npt.NDArray` key and would support user-defined `type X = ...` aliases too,
+  but it touches the core translation path, so it was left out of this release.
 - *ty ignores in the test, not a wider `translate_type` signature* — `translate_type(t: type)`
   already receives non-`type` annotations (`Annotated[...]`, unions), and the tests already use
   this ignore for those. ty 0.0.84 now treats `npt.NDArray[...]` as a type alias, so it joins
@@ -58,18 +69,12 @@ surfaced new diagnostics.
   and is out of scope for a release.
 
 **Follow-ups / known limitations**
-- **numpy 2.4.x is now broken.** On numpy < 2.5, `get_origin(NDArray[...])` is `np.ndarray`,
-  which is no longer a mapping key, so every `NDArray` annotation fails, yet `pyproject.toml`
-  still allows `numpy>=2.4.3`. Fix by keeping both `np.ndarray` and `npt.NDArray` as keys, or by
-  raising the floor to `numpy>=2.5`.
-- **Explicit `np.ndarray[Any, np.dtype[T]]` annotations no longer translate** (`RustTypeError`)
-  on any numpy version, for the same reason. Keeping the `np.ndarray` key would restore them.
-- The `tree.type == np.ndarray` branch in `RustTypeTree.__init__` (which digs the dtype out of
-  `subtypes[1]`) is now dead for `NDArray`. On 2.5 the alias has a single type parameter, so
-  the generic branch happens to produce `PyReadonlyArrayDyn<T>`.
-- Bare `np.ndarray` (no type parameters) has never translated: it raised `IndexError` before
-  this change and `RustTypeError` now.
-- No test covers `np.ndarray[...]` or a numpy 2.4 run, so neither regression is caught by CI.
+- Bare `np.ndarray` (no type parameters) still fails with an `IndexError` rather than a helpful
+  `RustTypeError`. That predates this change.
+- CI only tests the locked numpy (2.5.3). The numpy 2.4 path was checked locally
+  (`uv run --with numpy==2.4.4 pytest src/test/test_types.py src/test/test_numpy.py`), but
+  nothing in CI would catch a regression there. A lowest-direct-deps CI job would cover it.
+- Generic type-alias expansion (see above) remains a candidate for a future change.
 
 ---
 
