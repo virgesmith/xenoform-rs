@@ -4,6 +4,7 @@ from types import EllipsisType, NoneType, UnionType
 from typing import Annotated, Any, Self, get_args, get_origin
 
 import numpy as np
+import numpy.typing as npt
 
 from xenoform_rs.errors import RustTypeError
 
@@ -22,7 +23,7 @@ DEFAULT_TYPE_MAPPING: dict[Any, str] = {
     complex: "&Bound<'py, PyComplex>",
     # np.complex64: "PyComplex", single precision not supported
     np.complex128: "&Bound<'py, PyComplex>",
-    np.ndarray: "PyReadonlyArrayDyn",
+    npt.NDArray: "PyReadonlyArrayDyn",
     str: "String",  # or "&'py str"?
     bytes: "&'py [u8]",  # or Vec<u8>?
     bytearray: "&Bound<'py, PyByteArray>",  # default type allows in-place modification

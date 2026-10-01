@@ -87,10 +87,10 @@ def test_specialised_types() -> None:
 
 
 def test_numpy_types() -> None:
-    rusttype = translate_type(npt.NDArray[np.int32])
+    rusttype = translate_type(npt.NDArray[np.int32])  # ty: ignore[invalid-argument-type]
     assert str(rusttype) == "PyReadonlyArrayDyn<i32>"
 
-    rusttype = translate_type(npt.NDArray[np.float64])
+    rusttype = translate_type(npt.NDArray[np.float64])  # ty: ignore[invalid-argument-type]
     assert str(rusttype) == "PyReadonlyArrayDyn<f64>"
 
 

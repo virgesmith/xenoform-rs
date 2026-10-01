@@ -8,6 +8,7 @@ implementation** in a docstr:
 ```py
 from xenoform_rs import rust
 
+
 @rust(py=False)
 def vector_sum(v: list[int]) -> int:  # ty: ignore[empty-body]
     """
@@ -99,6 +100,7 @@ def array_nelems(a: npt.NDArray[np.int64]) -> Annotated[int, "usize"]:
     """
     Ok(a.as_array().shape().iter().product())
     """
+
 
 if __name__ == "__main__":
     print(array_nelems(np.empty([2, 3, 5, 7], dtype=np.int64)))
@@ -539,7 +541,7 @@ Python | rust
 `complex` | `&Bound<'py, PyComplex>`
 `np.complex128` | `&Bound<'py, PyComplex>`
 `str` | `String`
-`np.ndarray` | `PyReadonlyArrayDyn`
+`npt.NDArray` | `PyReadonlyArrayDyn`
 `bytes` | `&'py [u8]`
 `bytearray` | `&Bound<'py, PyByteArray>`
 `list` | `Vec`
