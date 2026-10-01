@@ -60,6 +60,7 @@ plain-Python version first and profile before reaching for `@rust`.
 ```py
 from xenoform_rs import rust
 
+
 @rust(py=False)
 def vector_sum(v: list[int]) -> int:  # a type checker will flag the empty body; that's expected
     """
@@ -96,7 +97,7 @@ exception.
 | `np.float32` / `np.float64` | `f32` / `f64` |
 | `complex` / `np.complex128` | `&Bound<'py, PyComplex>` |
 | `str` | `String` |
-| `np.ndarray` | `PyReadonlyArrayDyn` |
+| `np.ndarray` / `npt.NDArray` | `PyReadonlyArrayDyn` |
 | `bytes` | `&'py [u8]` |
 | `bytearray` | `&Bound<'py, PyByteArray>` |
 | `list` | `Vec` |

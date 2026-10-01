@@ -22,6 +22,62 @@ Entry template:
 
 ---
 
+## 2026-10-01 — Release prep for 0.1.6
+
+**Why** — Getting ready to release 0.1.6. Refreshing the lockfile pulled in numpy 2.5, which
+broke the default `npt.NDArray[...]` mapping at runtime: `test_numpy.py` failed at collection, and
+any user annotating with `NDArray` (as the README, SKILL.md and `examples/distance_matrix.py` all
+do) got `RustTypeError: Don't know a Rust type for 'NDArray'`. The pre-commit tool bumps also
+surfaced new diagnostics.
+
+**What**
+- Bumped the version to 0.1.6 and the pre-commit hooks (uv 0.12.21, ruff v0.16.9, ty v0.0.84), and
+  refreshed `uv.lock` (numpy 2.4.4 → 2.5.3, among others).
+- Added `npt.NDArray` as a `DEFAULT_TYPE_MAPPING` key for `PyReadonlyArrayDyn` alongside the
+  existing `np.ndarray` key, and listed both in the type tables in `README.md` and `SKILL.md`.
+- Added `# ty: ignore[invalid-argument-type]` to the two `translate_type(npt.NDArray[...])` calls in
+  `test_types.py`, and a test for an explicit `np.ndarray[Any, np.dtype[np.float64]]` annotation.
+- Applied ruff 0.16's new formatting of Python code blocks in Markdown (two blank lines before
+  top-level definitions) to `README.md` and `SKILL.md`.
+
+**Design decisions**
+- *Why it broke* — numpy 2.5 redefines `NDArray` as a PEP 695 alias
+  (`type NDArray[ScalarT] = ndarray[...]`). `get_origin(NDArray[np.int32])` now returns the
+  `TypeAliasType` object `NDArray` rather than `np.ndarray`, so the `np.ndarray` key no longer
+  matched.
+- *Key the mapping on both `np.ndarray` and `npt.NDArray`.* A first cut replaced `np.ndarray`
+  with `npt.NDArray`. That passed on numpy 2.5 but broke every `NDArray` annotation on numpy
+  2.4.x (still allowed by `numpy>=2.4.3`, and there `get_origin(NDArray[T])` is `np.ndarray`). It
+  also broke explicit `np.ndarray[shape, dtype[T]]` annotations on every version. Keeping both keys
+  handles both numpy versions and both annotation styles, at the cost of a duplicate entry (a
+  comment in `extension_types.py` explains why both are needed). Raising the floor to `numpy>=2.5`
+  was rejected: it drops users for no gain and still needs the `np.ndarray` key for explicit
+  annotations.
+- *The two keys reach the Rust type by different paths.* `np.ndarray[shape, dtype[T]]` hits the
+  `tree.type == np.ndarray` branch in `RustTypeTree.__init__`, which digs `T` out of
+  `subtypes[1]`. The numpy 2.5 alias `NDArray[T]` has a single type parameter, so the generic
+  branch produces `PyReadonlyArrayDyn<T>` directly.
+- *Not expanding type aliases in `PyTypeTree`.* The alternative was to detect
+  `typing.TypeAliasType` origins and substitute the arguments into `__value__`
+  (`origin.__value__[get_args(t)]`, which yields the old `ndarray[_AnyShape, dtype[T]]` shape).
+  That would need no `npt.NDArray` key and would support user-defined `type X = ...` aliases too,
+  but it touches the core translation path, so it was left out of this release.
+- *ty ignores in the test, not a wider `translate_type` signature* — `translate_type(t: type)`
+  already receives non-`type` annotations (`Annotated[...]`, unions), and the tests already use
+  this ignore for those. ty 0.0.84 now treats `npt.NDArray[...]` as a type alias, so it joins
+  them. Widening the parameter to `Any`/`object` would remove all the ignores but loses precision
+  and is out of scope for a release.
+
+**Follow-ups / known limitations**
+- Bare `np.ndarray` (no type parameters) still fails with an `IndexError` rather than a helpful
+  `RustTypeError`. That predates this change.
+- CI only tests the locked numpy (2.5.3). The numpy 2.4 path was checked locally
+  (`uv run --with numpy==2.4.4 pytest src/test/test_types.py src/test/test_numpy.py`), but
+  nothing in CI would catch a regression there. A lowest-direct-deps CI job would cover it.
+- Generic type-alias expansion (see above) remains a candidate for a future change.
+
+---
+
 ## 2026-08-30 — Add installable agent skill (`xenoform-rs-skill`)
 
 **Why** — Coding agents (Claude Code and similar) write `@rust`-decorated code more reliably
