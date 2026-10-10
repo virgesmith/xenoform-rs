@@ -36,6 +36,11 @@ would also replace any other module registered under that name.
   its build folder and log messages, so it no longer collides with the Python module.
 - `test_reimport.py` reproduces the bug with a top-level module (the case that collides) and checks that the
   Python module is left in place.
+- README gains a short *Notebooks* section, which comes from the same notebook investigation. Cells defining
+  `@rust` functions need a `module_name` override, and changes to `@rust` functions need a kernel restart. Both
+  rules were checked in a real Jupyter kernel. The section is deliberately just the two rules rather than a list of
+  failure modes: edits after a call are silently ignored, edits before a call give E0428, and new functions give
+  `AttributeError`. All of these are fixed by the same restart, so users don't need to tell them apart.
 
 **Design decisions**
 - *A namespaced key, not a renamed Rust module.* For single-phase init, Python looks for the extension's init
