@@ -43,3 +43,12 @@ jobs:
         uv run examples/distance_matrix.py
         uv run examples/monte_carlo.py
         uv run examples/levenshtein.py
+
+  # The single required status check for merging into main (ruleset `lock-main`), so that changing the matrix
+  # never requires editing the ruleset. A skipped required check counts as passing, hence `if: always()`.
+  all-checks:
+    if: always()
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - run: test "${{ needs.build.result }}" = success

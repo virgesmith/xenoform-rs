@@ -56,6 +56,15 @@ comes in and 3.12 goes out. The GitHub Actions and pre-commit tools were also be
 - *Few 3.13 features apply.* `TypeIs`, TypeVar defaults, `warnings.deprecated`, `copy.replace` and `ReadOnly` have
   no use site yet (no type-narrowing predicates, generic classes, deprecations, dataclass copies or TypedDicts).
   They shouldn't be forced in.
+- *A single `all-checks` job is the only required status check.* The `lock-main` ruleset listed nine matrix jobs
+  by name (`build (3.12, macos-latest)` …). Removing 3.12 left three required checks that would never report, and
+  the PR sat with them showing as queued. The list was also already incomplete: 3.14/macos and 3.14t/ubuntu and
+  windows weren't required, and 3.15 wasn't there either. `all-checks` `needs: build` and succeeds only if the
+  whole matrix did, so future matrix changes don't touch the ruleset. It runs with `if: always()`, because GitHub
+  counts a skipped required check as passing, so without it a failed matrix would skip this job and let the PR
+  merge.
+  - *Rejected: keeping per-job checks and updating the list.* It's the same chore on every version bump, and
+    forgetting it blocks the PR, as happened here.
 - *Rejected: adding 3.15t to CI.* Free-threading stays covered by 3.14t only, which keeps the matrix size unchanged.
 
 **Follow-ups**

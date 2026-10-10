@@ -145,7 +145,7 @@ When reviewing a PR or diff, check:
 ## QA Rules
 
 - Run the full gate suite (`ruff check`, `ruff format --check`, `ty check`, `pytest`, both examples) before declaring any task done.
-- CI runs the matrix: Python 3.13, 3.14, 3.14t, 3.15 × ubuntu, macos, windows. Flag anything that might be platform- or version-specific, especially path handling (`PTH` rules) and free-threaded behaviour.
+- CI runs the matrix: Python 3.13, 3.14, 3.14t, 3.15 × ubuntu, macos, windows. The `lock-main` ruleset requires only the `all-checks` job, which passes only if every matrix job does, so the matrix can change without editing the ruleset. Flag anything that might be platform- or version-specific, especially path handling (`PTH` rules) and free-threaded behaviour.
 - The free-threaded build (`3.14t`) is in the CI matrix. Do not assume it behaves identically to the standard build.
 - If a test is skipped or marked `xfail`, leave a comment explaining why and when it can be removed.
 
