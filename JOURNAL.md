@@ -104,6 +104,73 @@ the current versions. numpy 0.29 requires `pyo3 ^0.29`, so the bump can't be mad
 
 ---
 
+## 2026-10-06 — Surface rustc errors in `CompilationError` (issue #26, increment 1)
+
+**Why** — A failed build raised only *"Cargo build failed … See build.log for details"*, so finding out what was
+wrong meant opening a file deep under `ext/`. This is worst in notebooks, where the log is out of sight. Issue #26
+asks for compile errors to be shown inline, and eventually at the right Python line.
+
+**What**
+- Cargo now runs with `--message-format=json`. The `compiler-message` records are parsed into `RustDiagnostic`s
+  (level, code, message, rendered text, primary-span file and line, whether rustc suggests a fix).
+- `CompilationError` gains a `diagnostics` list holding all the errors. Its message is rustc's rendered output for
+  the errors that carry a suggested fix (or the first error if none do), a count of the rest, and the path to
+  `build.log`.
+- If cargo fails before rustc runs (e.g. an invalid `Cargo.toml`), there are no diagnostics. The message then carries
+  cargo's stderr from the first `error` line onwards.
+- `build.log` still holds readable output: cargo's stderr followed by the rendered errors *and warnings*.
+- `RustDiagnostic` is exported, and the README troubleshooting section documents both.
+
+**Design decisions**
+- *JSON messages rather than scraping the human output.* The `error[...]` text format isn't stable, but the JSON
+  schema is. JSON also gives structured fields (code, primary span), which the next increment needs to map spans
+  back to Python lines.
+- *Message is rustc's `rendered` text, shortened.* It's the format Rust users already know, and there's no line
+  mapping yet that would justify a custom rendering. Warnings are left out of the exception: it should explain the
+  failure, and warnings stay in `build.log`.
+- *Shortening keeps the sub-diagnostics that point into the crate.* rustc often adds long sections that point into
+  std or dependency sources, e.g. a listing of every type that implements `Add`. These are noise for an inline
+  error. `_brief` splits the rendered text at sub-diagnostic headers (`help:`, `note:` …) and drops any section with
+  an absolute `-->`/`:::` path. Paths inside the crate are relative (`src/lib.rs`); toolchain and registry paths
+  are absolute.
+  - *Rejected: keep only the first section.* That is simpler, but it drops rustc's suggested fixes, such as
+    `help: … x.len().try_into().unwrap()`, which are the most useful part of many errors.
+  - *Headers are matched by pattern, not indentation.* A first cut started a new section at any line beginning in
+    column 0. Line numbers as wide as the gutter (`562 | …`) also start in column 0, so lines of std source leaked
+    through. A unit test pins this case.
+  - *Multi-line `= help:` items are dropped too.* These are inline lists rather than sections, e.g. E0277's
+    "the following other types implement trait `Dimension`:" followed by eight `Dim<…>` types, and they made a
+    three-error failure in `examples/loop.py` run to ~45 lines. They are matched as a `= help:` line followed by
+    lines indented beyond its `=`. Multi-line `= note:`s (expected/found pairs) and one-line `= help:`s are kept.
+  - *Nothing is lost.* `RustDiagnostic.rendered` and `build.log` keep the full text.
+- *Only errors with a suggested fix are shown, falling back to the first error.* One mistake often causes several
+  errors. In `examples/loop.py`, a `Result` used as a length gave E0271 and E0277 at the `zeros` call, plus E0308 at
+  the loop, and only E0308 carried the fix (`n?`). The message dropped from ~45 lines to the ~12 that mattered. A
+  "fix" is any child span with a `suggested_replacement` in the JSON; `_select` is a pure function with its own unit
+  tests.
+  - *Trade-off accepted:* an unrelated error with no fix is hidden while another error has one. The message says
+    how many errors are hidden and where to find them, and `diagnostics` still holds them all.
+  - *Rejected: first error only.* rustc's emission order isn't a contract, and in `loop.py` it put the knock-on
+    errors first.
+  - *Rejected: all errors, compacted.* Dropping only the `= help:` lists still left ~35 lines for `loop.py`, most
+    of it knock-on noise.
+- *Spanless messages are kept, with `file`/`line` left as `None`.* Skipping them would hide linker failures, which
+  rustc reports with no source location and, in JSON mode, not on stderr. Spanless notes like "For more information
+  about this error…" are filtered out of the exception by level (`failure-note`) but still go to `build.log`.
+- *Explicit UTF-8 decoding.* rustc always emits UTF-8, and with `text=True` alone Windows would decode with the
+  locale codepage and could raise on non-ASCII source text.
+- *`build.log` layout.* It is stderr followed by the diagnostics, rather than the two interleaved as before. The
+  order differs slightly from a plain `cargo build`, but nothing is lost. Writing the raw JSON stream was rejected
+  as unreadable.
+
+**Follow-ups**
+- Increment 2 (on hold): map `src/lib.rs` spans back to the `.py` file and docstring line. This needs `rustfmt` to
+  stop reflowing user bodies, e.g. by formatting a skeleton with placeholder bodies and putting the raw docstrings
+  back in afterwards.
+- Compile errors still only appear on first call. Compiling at decoration time is issue #26's notebook increment 3.
+
+---
+
 ## 2026-10-01 — Release prep for 0.1.6
 
 **Why** — Getting ready to release 0.1.6. Refreshing the lockfile pulled in numpy 2.5, which
