@@ -16,9 +16,9 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install prerequisites
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.3.0
       - name: Install project
         run: uv sync --all-groups
       - name: Build wheel

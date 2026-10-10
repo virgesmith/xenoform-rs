@@ -13,12 +13,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14", "3.14t"]
+        python-version: ["3.13", "3.14", "3.14t", "3.15"]
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: "Setup uv ${{ matrix.python-version }} / ${{ matrix.os }}"
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@v10.3.0
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install Rust
@@ -43,3 +43,12 @@ jobs:
         uv run examples/distance_matrix.py
         uv run examples/monte_carlo.py
         uv run examples/levenshtein.py
+
+  # The single required status check for merging into main (ruleset `lock-main`), so that changing the matrix
+  # never requires editing the ruleset. A skipped required check counts as passing, hence `if: always()`.
+  all-checks:
+    if: always()
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - run: test "${{ needs.build.result }}" = success

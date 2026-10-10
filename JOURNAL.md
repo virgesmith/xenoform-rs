@@ -22,6 +22,58 @@ Entry template:
 
 ---
 
+## 2026-10-10 — Support Python 3.13–3.15; bump CI actions and dev tooling
+
+**Why** — Python 3.15 has been released, and the project supports only the three latest minor versions. So 3.15
+comes in and 3.12 goes out. The GitHub Actions and pre-commit tools were also behind.
+
+**What**
+- `requires-python = ">=3.13"`. The classifiers and CI matrix are now 3.13, 3.14, 3.14t, 3.15, and the generated
+  `Cargo.toml` uses pyo3's `abi3-py313`.
+- `actions/checkout` v6 → v7, `astral-sh/setup-uv` v7 → v10.3.0. Pre-commit: uv 0.13.0, ruff v0.17.0, ty v0.0.86.
+  `uv_build` bound `<0.14.0`. Relocked.
+- AGENTS.md now states the three-version policy, lists everything a version bump must keep in step, and allows
+  features of the oldest supported version.
+- Removed the 3.12 shim in `test_freethreaded.py`: `sys._is_gil_enabled` exists from 3.13.
+- `compile.py` now uses PEP 695 type parameters throughout. The module-level `P = ParamSpec("P")` and
+  `R = TypeVar("R")` are gone, `rust` is declared as `rust[**P, R]`, and `_get_function` returns
+  `Callable[..., Any]`, since it previously named `P` and `R` with nothing to bind them.
+
+**Design decisions**
+- *The policy is written down, not just applied.* With it in AGENTS.md, the next bump is mechanical: one PR, one
+  checklist of places to change.
+- *setup-uv is pinned to an exact version.* From v8, setup-uv stopped publishing major/minor tags, as a guard against
+  supply-chain attacks, so `@v10` doesn't exist. checkout still publishes `@v7`, so it keeps the major-version pin.
+- *None of the actions' breaking changes apply.* checkout v7 blocks fork checkouts on `pull_request_target` and
+  `workflow_run`. setup-uv v8 removed the old manifest format, v9 turned cache pruning off by default (larger cache,
+  no behaviour change), and v10 disables auto-caching on `pull_request_target`, `workflow_run` and `release`. The
+  workflows use none of these.
+- *`rust[**P, R]` with a `Callable` return, not a generic `Protocol`.* `P` and `R` appear only in the returned
+  callable, so a checker could bind them at the `rust(...)` call, where there is nothing to infer them from. The
+  standard fix is a `Protocol` whose `__call__` is generic. But a probe showed `ty` already moves `P` and `R` onto
+  the returned callable: a decorated `def f(x: int, y: str) -> float` keeps exactly that signature, as before. So
+  the direct translation was kept, and the Protocol pattern wasn't needed.
+- *Few 3.13 features apply.* `TypeIs`, TypeVar defaults, `warnings.deprecated`, `copy.replace` and `ReadOnly` have
+  no use site yet (no type-narrowing predicates, generic classes, deprecations, dataclass copies or TypedDicts).
+  They shouldn't be forced in.
+- *A single `all-checks` job is the only required status check.* The `lock-main` ruleset listed nine matrix jobs
+  by name (`build (3.12, macos-latest)` …). Removing 3.12 left three required checks that would never report, and
+  the PR sat with them showing as queued. The list was also already incomplete: 3.14/macos and 3.14t/ubuntu and
+  windows weren't required, and 3.15 wasn't there either. `all-checks` `needs: build` and succeeds only if the
+  whole matrix did, so future matrix changes don't touch the ruleset. It runs with `if: always()`, because GitHub
+  counts a skipped required check as passing, so without it a failed matrix would skip this job and let the PR
+  merge.
+  - *Rejected: keeping per-job checks and updating the list.* It's the same chore on every version bump, and
+    forgetting it blocks the PR, as happened here.
+- *Rejected: adding 3.15t to CI.* Free-threading stays covered by 3.14t only, which keeps the matrix size unchanged.
+
+**Follow-ups**
+- Since each interpreter builds its own extension, abi3's one-binary-for-many-Pythons benefit may not be used,
+  while it restricts pyo3 to the limited API. Whether to drop abi3 needs its own look, including the
+  free-threading implications.
+
+---
+
 ## 2026-10-10 — pyo3 and numpy crates 0.29, rayon 1.12
 
 **Why** — The `numpy` crate 0.29 and `rayon` 1.12 have been released, and the examples, tests and docs should use

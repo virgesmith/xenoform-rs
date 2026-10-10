@@ -8,7 +8,7 @@ from collections.abc import Callable
 from functools import lru_cache, wraps
 from pathlib import Path
 from types import ModuleType
-from typing import ParamSpec, TypeVar
+from typing import Any
 
 from xenoform_rs.config import get_config
 from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError, RustTypeError
@@ -166,10 +166,6 @@ def _get_module_checksum(module_path: Path, module_name: str) -> str | None:
     return None
 
 
-P = ParamSpec("P")
-R = TypeVar("R")
-
-
 def _check_annotations[**P, R](func: Callable[P, R]) -> None:
     """Ensures all args and return are typed"""
     sig = inspect.signature(func)
@@ -308,14 +304,13 @@ def _get_module(module_name: str) -> ModuleType:
 
 
 @lru_cache(maxsize=256)
-def _get_function(module_name: str, function_name: str) -> Callable[P, R]:
+def _get_function(module_name: str, function_name: str) -> Callable[..., Any]:
     module = _get_module(module_name)
     logger.info(f"redirected {function_name[1:]} to compiled function {module.__name__}.{function_name}")
-    # return cast(Callable[P, R], getattr(module, function_name))
     return getattr(module, function_name)
 
 
-def rust(
+def rust[**P, R](
     *,
     py: bool = True,
     dependencies: list[str] | None = None,
@@ -330,7 +325,8 @@ def rust(
     Decorator factory for compiling rust function implementations into extension modules.
 
     Returns:
-        Callable[..., Callable[..., Any]]: A function that when called, will return the compiled function.
+        Callable[[Callable[P, R]], Callable[P, R]]: A decorator that replaces the function with its compiled
+        version, preserving its signature.
     """
 
     if get_config().verbose is not None:

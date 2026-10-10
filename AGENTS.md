@@ -122,6 +122,7 @@ There is no coverage threshold configured, but tests compile and execute real Ru
 - **Type translation is the critical path.** Changes to [extension_types.py](src/xenoform_rs/extension_types.py) affect every user and must be accompanied by tests covering the affected type mappings.
 - **Generated Rust must compile.** When modifying the code generation in [compile.py](src/xenoform_rs/compile.py), verify the output is valid Rust — run the full test suite, which will catch this.
 - **The `Annotated` override mechanism is the escape hatch.** Do not special-case types in the core translation logic when an `Annotated` override can solve the problem instead.
+- **Only the three latest Python minor versions are supported** (currently 3.13, 3.14, 3.15). When a new minor version is released, drop the oldest and add the new one in a single PR. That PR must keep `requires-python`, the classifiers in [pyproject.toml](pyproject.toml), the CI matrix in [lint-test.yml](.github/workflows/lint-test.yml), pyo3's `abi3-pyXY` feature in [rustmodule.py](src/xenoform_rs/rustmodule.py) and the matrix listed under [QA Rules](#qa-rules) in step. Code may use any language or stdlib feature available in the oldest supported version, and compatibility shims for dropped versions should be removed.
 - **Free-threaded support must be preserved.** The library builds GIL-free extension modules when running under free-threaded Python (`3.14t`). Changes affecting the pyo3 bindings or module build flags must not regress free-threaded behaviour.
 - **Type annotations required.** All function signatures need full annotations. `ty` will catch missing or incorrect ones.
 - **Line length is 120** (configured in [pyproject.toml](pyproject.toml) under `[tool.ruff]`).
@@ -144,7 +145,7 @@ When reviewing a PR or diff, check:
 ## QA Rules
 
 - Run the full gate suite (`ruff check`, `ruff format --check`, `ty check`, `pytest`, both examples) before declaring any task done.
-- CI runs the matrix: Python 3.12, 3.13, 3.14, 3.14t × ubuntu, macos, windows. Flag anything that might be platform- or version-specific, especially path handling (`PTH` rules) and free-threaded behaviour.
+- CI runs the matrix: Python 3.13, 3.14, 3.14t, 3.15 × ubuntu, macos, windows. The `lock-main` ruleset requires only the `all-checks` job, which passes only if every matrix job does, so the matrix can change without editing the ruleset. Flag anything that might be platform- or version-specific, especially path handling (`PTH` rules) and free-threaded behaviour.
 - The free-threaded build (`3.14t`) is in the CI matrix. Do not assume it behaves identically to the standard build.
 - If a test is skipped or marked `xfail`, leave a comment explaining why and when it can be removed.
 
