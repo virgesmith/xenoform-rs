@@ -25,7 +25,7 @@ def parse_slice(length: int, s: slice) -> list[int]:  # ty: ignore[empty-body]
 
 @rust(
     py=False,
-    dependencies=[rust_dependency("numpy", version="0.28")],
+    dependencies=[rust_dependency("numpy", version="0.29")],
     imports=[
         "numpy::{PyArrayDyn, PyUntypedArrayMethods}",
         "pyo3::types::PyTuple",

@@ -16,8 +16,8 @@ def calc_dist_matrix_py(p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
 
 @rust(
     dependencies=[
-        rust_dependency("numpy", version="0.28"),
-        rust_dependency("rayon", version="1.11"),
+        rust_dependency("numpy", version="0.29"),
+        rust_dependency("rayon", version="1.12"),
     ],
     imports=[
         "numpy::{PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2}",

@@ -77,7 +77,7 @@ exception.
 | name | type | default | description |
 |------|------|---------|--------------|
 | `py` | `bool` | `True` | Pass the python context as the first argument (`py: Python<'py>`). Needed when creating Python objects or calling Python APIs from Rust. |
-| `dependencies` | `list[str] \| None` | `None` | Rust crate dependencies. Use `rust_dependency(name, version=..., features=[...])` to build entries, e.g. `rust_dependency("numpy", version="0.28")`. |
+| `dependencies` | `list[str] \| None` | `None` | Rust crate dependencies. Use `rust_dependency(name, version=..., features=[...])` to build entries, e.g. `rust_dependency("numpy", version="0.29")`. |
 | `modules` | `list[Path \| str] \| None` | `None` | Extra Rust source files to link in. Modifying one triggers a rebuild. |
 | `imports` | `list[str] \| None` | `None` | Extra `use` imports, e.g. `"numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"`. |
 | `module_name` | `str \| None` | `None` | Override the default python-file-to-rust-module name mapping — needed when the source file's name is a Rust keyword (e.g. a file called `loop.py` needs `module_name="loop_rs"`). |
@@ -158,7 +158,7 @@ its reference stripped (you get `Bound<'py, T>` back, since you can't return a b
 
 | Variable | Effect |
 |----------|--------|
-| `XENOFORM_RS_PYO3_VERSION` | Override the pyo3 version (default and only supported: 0.28). |
+| `XENOFORM_RS_PYO3_VERSION` | Override the pyo3 version (default and only supported: 0.29). |
 | `XENOFORM_RS_EXTMODULE_ROOT` | Move compiled modules out of the default `ext/` subdirectory. Avoid path characters (space, hyphen) invalid in a Python module name. |
 | `XENOFORM_RS_VERBOSE` | Any value (including empty) turns on INFO-level logging of compile/check/import steps with timings, on xenoform-rs's own logger only — never touches `logging.basicConfig`/root logging. |
 | `XENOFORM_RS_DISABLE_FT` | Disable building free-threaded (GIL-free) extension modules under a free-threaded interpreter. |

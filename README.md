@@ -91,7 +91,7 @@ from xenoform_rs import rust, rust_dependency
 
 @rust(
     py=False,  # we don't require the python context as the first argument (we aren't constructing any python objects or calling any python APIs)
-    dependencies=[rust_dependency("numpy", version="0.28")],  # declare we need the numpy crate
+    dependencies=[rust_dependency("numpy", version="0.29")],  # declare we need the numpy crate
     imports=["numpy::PyReadonlyArrayDyn"],  # import the type we need
 )
 def array_nelems(a: npt.NDArray[np.int64]) -> Annotated[int, "usize"]:
@@ -131,7 +131,7 @@ installed `xenoform-rs` package, so it always matches the version in use.
 name | type | default | description
 ---- | ---- | ------- | -----------
 `py` | `bool` | `True` | Pass the python context as the first argument. Necessary when (e.g.) creating python objects
-`dependencies` | `list[str] \| None` | `None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.28")]`
+`dependencies` | `list[str] \| None` | `None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.29")]`
 `modules` | `list[Path \| str] \| None` | `None` | Sources for additional modules
 `imports` | `list[str] \| None` | `None` | Additional imports, e.g. `imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"]`
 `module_name` | `str \| None` | `None` | Override the default one-to-one mapping between python files and rust modules, e.g. when the python source file is a reserved rust keyword
@@ -175,7 +175,7 @@ such objects via their python API:
 
 ```py
 @rust(
-    dependencies=[rust_dependency("numpy", version="0.28")],
+    dependencies=[rust_dependency("numpy", version="0.29")],
     imports=["numpy::{PyArray1, PyArrayMethods}", "pyo3::types::{PyDict, PyAnyMethods}"],
     module_name="loop_rs",  # override as "loop" is a rust keyword
     profile={"strip": "symbols"},
@@ -248,8 +248,8 @@ than exploiting symmetry, but the embarrassingly parallel scaling more than pays
 ```py
 @rust(
     dependencies=[
-        rust_dependency("numpy", version="0.28"),
-        rust_dependency("rayon", version="1.11"),
+        rust_dependency("numpy", version="0.29"),
+        rust_dependency("rayon", version="1.12"),
     ],
     imports=[
         "numpy::{PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2}",
@@ -345,7 +345,7 @@ one-line `rayon` change (`into_par_iter`):
     dependencies=[
         rust_dependency("rand", version="0.9", features=["small_rng"]),
         rust_dependency("rand_distr", version="0.5"),
-        rust_dependency("rayon", version="1.11"),
+        rust_dependency("rayon", version="1.12"),
     ],
     imports=[
         "rand::{Rng, SeedableRng}",
@@ -604,7 +604,7 @@ See the examples in [test_callable.py](src/test/test_callable.py) for more detai
 
 ### `pyo3` version
 
-The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default - and only supported version - is currently 0.28. Using a different version is not guaranteed to work, and will probably require overrides for all argument and return types.
+The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default - and only supported version - is currently 0.29. Using a different version is not guaranteed to work, and will probably require overrides for all argument and return types.
 
 ### Location of Extension Modules
 

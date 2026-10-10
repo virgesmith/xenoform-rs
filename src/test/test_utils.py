@@ -9,10 +9,10 @@ from xenoform_rs.errors import RustModuleError
 
 def test_rust_dependency() -> None:
     assert rust_dependency("num", "*") == 'num = "*"'
-    assert rust_dependency("numpy", version="0.28") == 'numpy = { version = "0.28" }'
+    assert rust_dependency("numpy", version="0.29") == 'numpy = { version = "0.29" }'
     assert (
-        rust_dependency("pyo3", version="0.28", features=["extension-module", "abi3-py312"])
-        == """pyo3 = { version = "0.28", features = ['extension-module', 'abi3-py312'] }"""
+        rust_dependency("pyo3", version="0.29", features=["extension-module", "abi3-py313"])
+        == """pyo3 = { version = "0.29", features = ['extension-module', 'abi3-py313'] }"""
     )
 
     with pytest.raises(RustConfigError):
