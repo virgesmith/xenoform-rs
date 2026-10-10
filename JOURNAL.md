@@ -131,8 +131,12 @@ asks for compile errors to be shown inline, and eventually at the right Python l
 - *Shortening keeps the sub-diagnostics that point into the crate.* rustc often adds long sections that point into
   std or dependency sources, e.g. a listing of every type that implements `Add`. These are noise for an inline
   error. `_brief` splits the rendered text at sub-diagnostic headers (`help:`, `note:` …) and drops any section with
-  an absolute `-->`/`:::` path. Paths inside the crate are relative (`src/lib.rs`); toolchain and registry paths
-  are absolute.
+  a rooted `-->`/`:::` path. Paths inside the crate are relative (`src/lib.rs`), while toolchain and registry paths
+  are rooted.
+  - *Rooted, not absolute.* The first cut tested `Path.is_absolute()`, which failed on Windows CI. Without the
+    `rust-src` component, which the CI runners don't have, rustc reports std as `/rustc/<hash>/library/...`. That
+    path has no drive, so it isn't absolute on Windows, and std notes leaked into the message. `Path.anchor`, which
+    is a drive and/or root, catches both forms. The `_brief` unit test includes a `/rustc/...` note to pin this.
   - *Rejected: keep only the first section.* That is simpler, but it drops rustc's suggested fixes, such as
     `help: … x.len().try_into().unwrap()`, which are the most useful part of many errors.
   - *Headers are matched by pattern, not indentation.* A first cut started a new section at any line beginning in

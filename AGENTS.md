@@ -114,7 +114,7 @@ uv run examples/monte_carlo.py
 uv run examples/levenshtein.py
 ```
 
-There is no coverage threshold configured, but tests compile and execute real Rust, so they are inherently integration-level — every code path should be exercised.
+Coverage must be 100% (`fail_under = 100` under `[tool.coverage.report]` in [pyproject.toml](pyproject.toml)). CI enforces it in the 3.14/ubuntu job (`pytest --cov=xenoform_rs`), so run that locally when adding code. Tests compile and execute real Rust, so they are mostly integration-level; defensive branches that real builds don't reach need unit tests.
 
 ## Developer Rules
 

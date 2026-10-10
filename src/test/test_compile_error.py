@@ -1,9 +1,10 @@
+import json
 from pathlib import Path
 
 import pytest
 
 from xenoform_rs import CompilationError, RustDiagnostic, rust
-from xenoform_rs.compile import _brief, _select
+from xenoform_rs.compile import _brief, _parse_cargo_messages, _select
 
 
 def test_compile_error_reports_rustc_diagnostics() -> None:
@@ -72,6 +73,8 @@ note: tuple variant defined here
     |
 562 |     Ok(T),
     |     ^^
+note: required by a bound in `TryInto`
+   --> /rustc/0123456789abcdef/library/core/src/convert/mod.rs:604:1
 help: you can convert an `i64` to an `i32` and panic if the converted value doesn't fit
     |
  28 |         Ok(y.try_into().unwrap())
@@ -79,7 +82,8 @@ help: you can convert an `i64` to an `i32` and panic if the converted value does
 
 """
 
-# must be absolute on the platform running the test, i.e. include a drive on Windows
+# an absolute path on the platform running the test (i.e. with a drive on Windows), as reported when the rust-src
+# component is installed. Without it, std paths are remapped to "/rustc/<hash>/...", which is rooted but has no drive
 _STD_PATH = str(Path.home() / ".rustup" / "core" / "src" / "result.rs")
 
 
@@ -96,13 +100,53 @@ def test_brief_drops_help_lists_and_sub_diagnostics_outside_the_crate() -> None:
             "    = note: expected type `i32`",
             "               found type `i64`",
             "    = help: a one-line hint",
-            # the std "note" is dropped, including its "562 | ..." line, which starts at column 0 like a header would
+            # both std "note"s are dropped, including the "562 | ..." line, which starts at column 0 like a header would
             "help: you can convert an `i64` to an `i32` and panic if the converted value doesn't fit",
             "    |",
             " 28 |         Ok(y.try_into().unwrap())",
             "    |             ++++++++++++++++++++",
         ]
     )
+
+
+def _compiler_message(**message: object) -> str:
+    return json.dumps({"reason": "compiler-message", "message": message})
+
+
+def test_parse_cargo_messages_reads_only_compiler_messages() -> None:
+    error = _compiler_message(
+        level="error",
+        code={"code": "E0308", "explanation": "..."},
+        message="mismatched types",
+        rendered="error[E0308]: mismatched types\n",
+        spans=[{"file_name": "src/lib.rs", "line_start": 28, "is_primary": True}],
+        children=[{"level": "help", "spans": [{"suggested_replacement": "y.try_into().unwrap()"}]}],
+    )
+    # e.g. linker failures have no source location
+    spanless = _compiler_message(
+        level="error", code=None, message="linking failed", rendered="error: linking failed\n", spans=[], children=[]
+    )
+    stdout = "\n".join(
+        [
+            "not JSON",
+            json.dumps({"reason": "compiler-artifact"}),
+            error,
+            spanless,
+            json.dumps({"reason": "build-finished", "success": False}),
+        ]
+    )
+    assert _parse_cargo_messages(stdout) == [
+        RustDiagnostic(
+            level="error",
+            code="E0308",
+            message="mismatched types",
+            rendered="error[E0308]: mismatched types\n",
+            file="src/lib.rs",
+            line=28,
+            has_suggestion=True,
+        ),
+        RustDiagnostic(level="error", code=None, message="linking failed", rendered="error: linking failed\n"),
+    ]
 
 
 def _error(code: str, *, has_suggestion: bool = False) -> RustDiagnostic:
@@ -127,5 +171,6 @@ def test_select_falls_back_to_the_first_error() -> None:
 if __name__ == "__main__":
     test_compile_error_reports_rustc_diagnostics()
     test_brief_drops_help_lists_and_sub_diagnostics_outside_the_crate()
+    test_parse_cargo_messages_reads_only_compiler_messages()
     test_select_prefers_errors_with_a_suggested_fix()
     test_select_falls_back_to_the_first_error()

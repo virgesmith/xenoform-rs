@@ -227,8 +227,10 @@ def _brief(rendered: str) -> str:
             sections.append([])
         sections[-1].append(line)
 
+    # crate paths are relative; external ones are rooted but not necessarily absolute - without the rust-src component
+    # std is reported as "/rustc/<hash>/library/...", which has no drive so isn't absolute on Windows
     def is_external(section: list[str]) -> bool:
-        return any((m := _SOURCE_LOCATION.match(line)) and Path(m[1]).is_absolute() for line in section)
+        return any((m := _SOURCE_LOCATION.match(line)) and Path(m[1]).anchor for line in section)
 
     head, *rest = sections
     return "\n".join(line for section in [head, *(s for s in rest if not is_external(s))] for line in section)
