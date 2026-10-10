@@ -56,7 +56,7 @@ def price_asian_option_np_threads(
     dependencies=[
         rust_dependency("rand", version="0.9", features=["small_rng"]),
         rust_dependency("rand_distr", version="0.5"),
-        rust_dependency("rayon", version="1.11"),
+        rust_dependency("rayon", version="1.12"),
     ],
     imports=[
         "rand::{Rng, SeedableRng}",

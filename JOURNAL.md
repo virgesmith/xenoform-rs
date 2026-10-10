@@ -22,6 +22,36 @@ Entry template:
 
 ---
 
+## 2026-10-10 — pyo3 and numpy crates 0.29, rayon 1.12
+
+**Why** — The `numpy` crate 0.29 and `rayon` 1.12 have been released, and the examples, tests and docs should use
+the current versions. numpy 0.29 requires `pyo3 ^0.29`, so the bump can't be made on its own.
+
+**What**
+- The default (and only supported) pyo3 version, `XenoformRsConfig.pyo3_version`, is now 0.29. It was 0.28.
+- `numpy` 0.28 → 0.29 in the examples, `test_numpy.py`, `test_slice.py`, README and SKILL.md.
+- `rayon` 1.11 → 1.12 in `distance_matrix.py`, `monte_carlo.py` and README.
+- The README and SKILL.md "only supported version" text says 0.29. The `rust_dependency` formatting test in
+  `test_utils.py` uses current strings: numpy/pyo3 0.29 and `abi3-py313`.
+
+**Design decisions**
+- *pyo3 is bumped with numpy, not left behind.* The generated `Cargo.toml` always depends on pyo3 at the configured
+  version, and pyo3-ffi declares `links = "python"`. Cargo allows only one such package per build, so numpy 0.29
+  with pyo3 0.28 fails dependency resolution, even before compilation. Users who need numpy 0.29 must be on pyo3
+  0.29. With 0.29 as the default, that works without the `XENOFORM_RS_PYO3_VERSION` override.
+- *Breaking-change check.* Before changing the default, the suite was run with `XENOFORM_RS_PYO3_VERSION=0.29`.
+  Everything passed except the tests still pinned to numpy 0.28, which failed on the links conflict, and those
+  passed once moved to numpy 0.29. Two changelog items looked relevant: removal of APIs deprecated in 0.27, and
+  argument-extraction errors now adding a note to the original `TypeError` instead of replacing it. Neither affects
+  the generated bindings or the tests. MSRVs: pyo3 and numpy 1.83, rayon 1.80.
+
+**Follow-ups**
+- Anyone pinning numpy 0.28 in their own `@rust` dependencies will hit the `links` conflict after upgrading. Worth a
+  release-note line.
+- The `abi3-py313` change to the generated `Cargo.toml` is in the Python 3.13–3.15 PR (#28), not here.
+
+---
+
 ## 2026-10-01 — Release prep for 0.1.6
 
 **Why** — Getting ready to release 0.1.6. Refreshing the lockfile pulled in numpy 2.5, which

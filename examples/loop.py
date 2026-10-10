@@ -23,7 +23,7 @@ def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
 
 
 @rust(
-    dependencies=[rust_dependency("numpy", version="0.28")],
+    dependencies=[rust_dependency("numpy", version="0.29")],
     imports=["numpy::{PyArray1, PyArrayMethods}", "pyo3::types::{PyDict, PyAnyMethods}"],
     module_name="loop_rs",  # override as "loop" is a rust keyword
     profile={"strip": "symbols"},
