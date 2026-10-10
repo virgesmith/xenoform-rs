@@ -1,6 +1,8 @@
 import inspect
+import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from collections import defaultdict
@@ -11,7 +13,7 @@ from types import ModuleType
 from typing import Any
 
 from xenoform_rs.config import get_config
-from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError, RustTypeError
+from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError, RustDiagnostic, RustTypeError
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import (
     get_function_scope,
@@ -166,6 +168,81 @@ def _get_module_checksum(module_path: Path, module_name: str) -> str | None:
     return None
 
 
+def _parse_cargo_messages(stdout: str) -> list[RustDiagnostic]:
+    """Extract the rustc diagnostics (errors and warnings) from cargo's JSON message stream"""
+    diagnostics = []
+    for line in stdout.splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("reason") != "compiler-message":
+            continue
+        message = record["message"]
+        # some errors (e.g. linker failures) have no source location
+        primary = next((s for s in message["spans"] if s["is_primary"]), None)
+        diagnostics.append(
+            RustDiagnostic(
+                level=message["level"],
+                code=message["code"]["code"] if message["code"] else None,
+                message=message["message"],
+                rendered=message["rendered"],
+                file=primary["file_name"] if primary else None,
+                line=primary["line_start"] if primary else None,
+                has_suggestion=any(
+                    span["suggested_replacement"] is not None
+                    for child in message["children"]
+                    for span in child["spans"]
+                ),
+            )
+        )
+    return diagnostics
+
+
+def _select(errors: list[RustDiagnostic]) -> list[RustDiagnostic]:
+    """
+    The errors worth showing inline: those with a suggested fix, or failing that the first. Errors are often knock-on
+    effects of another, and the one carrying a fix is usually the root cause
+    """
+    return [e for e in errors if e.has_suggestion] or errors[:1]
+
+
+_SOURCE_LOCATION = re.compile(r"^\s*(?:-->|:::) (.+):\d+:\d+$")
+_SECTION_HEADER = re.compile(r"^[a-z-]+(?:\[\w+\])?: ")
+# an inline "= help:" followed by lines indented beyond its "=", e.g. a list of every type implementing a trait
+_HELP_LIST = re.compile(r"^( *)= help: .*\n(?:\1 .+\n?)+", re.MULTILINE)
+
+
+def _brief(rendered: str) -> str:
+    """
+    Shorten rustc's rendered output by dropping multi-line "= help:" lists and the sub-diagnostics that point outside
+    the crate (e.g. into std or dependency sources), keeping those - such as suggested fixes - that refer to the
+    generated code
+    """
+    # a sub-diagnostic starts with a header like "help: ..." - indentation can't be used to detect them because
+    # line numbers as wide as the gutter (e.g. "562 | ...") also start at column 0
+    sections: list[list[str]] = []
+    for line in _HELP_LIST.sub("", rendered).rstrip().splitlines():
+        if not sections or _SECTION_HEADER.match(line):
+            sections.append([])
+        sections[-1].append(line)
+
+    # crate paths are relative; external ones are rooted but not necessarily absolute - without the rust-src component
+    # std is reported as "/rustc/<hash>/library/...", which has no drive so isn't absolute on Windows
+    def is_external(section: list[str]) -> bool:
+        return any((m := _SOURCE_LOCATION.match(line)) and Path(m[1]).anchor for line in section)
+
+    head, *rest = sections
+    return "\n".join(line for section in [head, *(s for s in rest if not is_external(s))] for line in section)
+
+
+def _stderr_errors(stderr: str) -> str:
+    """Cargo's own error output, without the preceding progress lines"""
+    lines = stderr.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.startswith("error")), max(len(lines) - 20, 0))
+    return "\n".join(lines[start:])
+
+
 def _check_annotations[**P, R](func: Callable[P, R]) -> None:
     """Ensures all args and return are typed"""
     sig = inspect.signature(func)
@@ -269,20 +346,35 @@ def _check_build_fetch_module_impl(
         logger.info(f"building {extmodule_root.name}.{ext_name}.{module_name}...")
         build_log = module_dir / "build.log"
 
-        with build_log.open("w") as fd:
-            compile_result = subprocess.run(
-                ["cargo", "build", "--release"],
-                cwd=module_dir,
-                check=False,
-                stdout=fd,
-                stderr=subprocess.STDOUT,
-                text=True,
-                env=_get_cargo_env(module_dir),
-                timeout=300,
-            )
+        compile_result = subprocess.run(
+            ["cargo", "build", "--release", "--message-format=json"],
+            cwd=module_dir,
+            check=False,
+            capture_output=True,
+            # rustc emits UTF-8 regardless of platform; the locale default (e.g. cp1252 on Windows) could fail to decode
+            encoding="utf-8",
+            errors="replace",
+            env=_get_cargo_env(module_dir),
+            timeout=300,
+        )
+        all_diagnostics = _parse_cargo_messages(compile_result.stdout)
+        build_log.write_text(
+            compile_result.stderr + "".join(d.rendered for d in all_diagnostics),
+            encoding="utf-8",
+        )
         if compile_result.returncode != 0:
+            errors = [d for d in all_diagnostics if d.level.startswith("error")]
+            if errors:
+                shown = _select(errors)
+                details = "\n\n".join(_brief(d.rendered) for d in shown)
+                if hidden := len(errors) - len(shown):
+                    details += f"\n\n...and {hidden} more error{'s' if hidden > 1 else ''}, see {build_log}"
+            else:
+                # errors that never reach rustc (e.g. an invalid Cargo.toml) are only reported on stderr
+                details = _stderr_errors(compile_result.stderr)
             raise CompilationError(
-                f"Cargo build failed for module '{ext_name}' with return code {compile_result.returncode}. See {build_log} for details."
+                f"Cargo build failed for module '{ext_name}' (full output in {build_log}):\n\n{details}",
+                errors,
             )
 
         logger.info(f"built {extmodule_root.name}.{ext_name}.{module_name}")

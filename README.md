@@ -630,6 +630,25 @@ The generated module source code is written to `src/lib.rs` in a module-specific
 Cargo build output is redirected to `build.log` in the that folder. The actual binary will be found in the
 `target/release` subfolder.
 
+If the Rust code fails to compile, a `CompilationError` is raised (on first call of the function) containing
+rustc's error message. One mistake often causes several errors, so only those for which rustc suggests a fix are
+shown - or, if there are none, the first. Messages are shortened to omit notes that refer to code outside the module
+(e.g. the standard library) and long lists of hints (e.g. every type that implements a trait). The full output is in
+`build.log`, and all the errors are also available programmatically as `RustDiagnostic` objects:
+
+```py
+from xenoform_rs import CompilationError
+
+try:
+    add_str(1)
+except CompilationError as e:
+    for d in e.diagnostics:
+        print(d.code, d.message, f"{d.file}:{d.line}")  # e.g. E0277 cannot add `&str` to `i32` src/lib.rs:19
+```
+
+Line numbers refer to the generated `src/lib.rs`. Errors that occur before rustc runs (e.g. an invalid `profile`
+or `edition` in `Cargo.toml`) are included in the exception message, but `diagnostics` will be empty.
+
 Setting `XENOFORM_RS_VERBOSE=1` logs the steps taken, with timings, e.g.:
 
 ```txt

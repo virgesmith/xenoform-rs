@@ -4,13 +4,16 @@ from xenoform_rs import CompilationError, rust
 
 
 def test_profile_invalid() -> None:
-    with pytest.raises(CompilationError):
+    with pytest.raises(CompilationError, match="opt-level") as excinfo:
 
         @rust(py=False, profile={"opt-level": "4"})
         def f(i: int) -> bool:  # ty: ignore[empty-body]
             "return i % 2;"
 
         f(3)
+
+    # cargo rejects the manifest before rustc runs, so the error comes from stderr
+    assert excinfo.value.diagnostics == []
 
 
 if __name__ == "__main__":
