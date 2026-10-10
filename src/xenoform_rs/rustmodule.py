@@ -23,7 +23,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 {dependencies}
-pyo3 = {{ version = "{pyo3_version}", features = ["extension-module", "abi3-py312"] }}
+pyo3 = {{ version = "{pyo3_version}", features = ["extension-module", "abi3-py313"] }}
 """
 
 
