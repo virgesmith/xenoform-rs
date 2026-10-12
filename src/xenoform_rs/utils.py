@@ -1,5 +1,6 @@
 import inspect
 import logging
+import math
 import re
 import subprocess
 import sys
@@ -11,13 +12,14 @@ from importlib.util import module_from_spec, spec_from_loader
 from operator import add
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Final, get_args, get_origin
 
+import numpy as np
 from itrx import Itr
 
 from xenoform_rs.config import get_config
 from xenoform_rs.errors import RustConfigError, RustModuleError
-from xenoform_rs.extension_types import translate_type
+from xenoform_rs.extension_types import parse_annotation, translate_type
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,7 @@ def get_function_scope(func: Callable[..., Any]) -> tuple[str, ...]:
 
 
 def _translate_value(value: Any, rust_type: str) -> str:
-    """Translate a python default value to a rust expression of the given type, for use in the pyo3 signature"""
+    """Translate a python value to a rust expression of the given type"""
     if value is None:
         return "None"
     if rust_type.startswith("Option<") and rust_type.endswith(">"):
@@ -62,8 +64,28 @@ def _translate_value(value: Any, rust_type: str) -> str:
         case str():
             literal = '"{}"'.format(value.replace("\\", "\\\\").replace('"', '\\"'))
             return f"{literal}.to_string()" if rust_type == "String" else literal
+        # python renders these as nan/inf, which aren't rust literals
+        case float() | np.floating() if math.isnan(value):
+            return f"{rust_type}::NAN"
+        case float() | np.floating() if math.isinf(value):
+            return f"{rust_type}::{'INFINITY' if value > 0 else 'NEG_INFINITY'}"
         case _:
             return str(value)
+
+
+def translate_constant(name: str, value: Any, annotation: Any = None) -> str:
+    """
+    Translate a python value to a rust const item. The type is translated from the annotation if there is one (so
+    overrides can be used), otherwise from the value's type
+    """
+    if annotation is None or annotation is Final:
+        annotation = type(value)
+    elif get_origin(annotation) is Final:
+        (annotation,) = get_args(annotation)
+    base_type, override = parse_annotation(annotation)
+    # the default mapping, String, can't be constructed in a const context
+    rust_type = "&str" if base_type is str and override is None else str(translate_type(annotation))
+    return f"const {name}: {rust_type} = {_translate_value(value, rust_type)};"
 
 
 def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple[str, list[str]]:

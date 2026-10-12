@@ -12,6 +12,9 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+if sys.version_info >= (3, 14):
+    import annotationlib
+
 from xenoform_rs.config import get_config
 from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError, RustDiagnostic, RustTypeError
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
@@ -20,6 +23,7 @@ from xenoform_rs.utils import (
     get_lib_path,
     get_target_dir,
     load_rust_module,
+    translate_constant,
     translate_function_signature,
 )
 
@@ -292,6 +296,37 @@ def _validate_module_name(module_name: str) -> None:
         )
 
 
+def _validate_constant_name(name: str) -> None:
+    if not name.isidentifier() or name in _RUST_KEYWORDS:
+        raise RustConfigError(
+            f"Invalid constant name: '{name}'. Use a valid identifier that isn't a Rust reserved word"
+        )
+
+
+def _translate_constants(func: Callable[..., Any], constants: dict[str, Any]) -> list[str]:
+    """
+    Translate constants to rust const items, each typed by the annotation of the module-level variable of the same
+    name, if there is one
+    """
+    if not constants:
+        return []
+    module = sys.modules[func.__module__]
+    # Only the annotations that are needed are evaluated: under lazy annotations (3.14+), or `from __future__ import
+    # annotations`, an unrelated one may refer to a name that isn't defined yet
+    if sys.version_info >= (3, 14):
+        annotations = annotationlib.get_annotations(module, format=annotationlib.Format.FORWARDREF)
+    else:  # pragma: no cover - 3.13 evaluates module annotations eagerly, so reading them can't raise
+        annotations = inspect.get_annotations(module)
+    constant_defs = []
+    for name, value in constants.items():
+        _validate_constant_name(name)
+        annotation = annotations.get(name)
+        if isinstance(annotation, str):
+            annotation = eval(annotation, vars(module))
+        constant_defs.append(translate_constant(name, value, annotation))
+    return constant_defs
+
+
 def _check_build_fetch_module_impl(
     module_name: str,
     module_spec: ModuleSpec,
@@ -414,6 +449,7 @@ def rust[**P, R](
     profile: dict[str, str] | None = None,
     edition: str | None = None,
     help: str | None = None,
+    constants: dict[str, Any] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator factory for compiling rust function implementations into extension modules.
@@ -435,6 +471,8 @@ def rust[**P, R](
         nonlocal module_name
         module_name = module_name or f"{Path(inspect.getfile(func)).stem}"
         _validate_module_name(module_name)
+
+        constant_defs = _translate_constants(func, constants or {})
 
         function_body = sig + " {" + (func.__doc__ or "") + "}"
 
@@ -463,6 +501,7 @@ def rust[**P, R](
             edition=edition,
             profile=profile or {},
             modules=[Path(m) for m in modules or []],
+            constants=constant_defs,
         )
 
         @wraps(func)

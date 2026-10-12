@@ -22,6 +22,74 @@ Entry template:
 
 ---
 
+## 2026-10-12 — Module-level constants via `@rust(constants=...)`
+
+**Why** — Rust code had no access to constants defined in Python. The rust body is the docstring, and an f-string is
+never a docstring, so the only option was to retype the value in rust, which duplicates it.
+
+**What**
+- `@rust` has a new `constants: dict[str, Any] | None` parameter. Each entry is rendered as `const NAME: TYPE = VALUE;`
+  by `translate_constant` (utils.py) and added to a new `ModuleSpec.constants: set[str]`. `make_source` emits the set,
+  sorted, at module level before the functions.
+- The rust type is translated by `translate_type` from the annotation of the module-level python variable with the
+  same name as the key, if there is one, otherwise from `type(value)`. So `BIG: Annotated[int, "u64"] = 2**40` gives
+  `const BIG: u64 = ...`. A `Final` qualifier is unwrapped (bare `Final` falls back to the value's type).
+- Constant names must be identifiers and not Rust keywords (`RustConfigError`). A type with no mapping and no override
+  raises the usual `RustTypeError`.
+- `_translate_value` now renders non-finite floats as `f64::NAN`/`f64::INFINITY`/`f64::NEG_INFINITY`, since python's
+  `nan`/`inf` aren't rust literals. This also fixes `inf`/`nan` default argument values, which previously produced
+  uncompilable rust.
+
+**Design decisions**
+- *A parameter on `@rust`, not a separate decorator.* There is no function to decorate for a constant. A stacked
+  decorator would also be order-dependent and have to stash data on the function object. A parameter follows
+  `dependencies`/`imports`/`modules`, and the constants always arrive in the same `add_function` call as their
+  function, so they can't miss a build.
+- *Module scope, not function scope.* Function-local `const` items would have avoided cross-function coupling and
+  conflicts. Module scope was chosen so that a constant can be declared once and shared, at the cost that a function
+  may silently rely on a constant declared by another. Accepted.
+- *A set of rendered items, with conflicts left to rustc.* Identical declarations from several functions collapse in
+  the set. Different values for the same name produce two items, which rustc rejects with E0428, surfaced by
+  `CompilationError`. A dict with a Python-side check (like `_append_profile`) would report the conflict at decoration
+  time with both values named. Rejected as extra code for a rare case whose rustc message is already clear.
+- *A dict of values, not a list of names.* `constants=["MAGIC_NUMBER"]` resolved via `func.__globals__` is shorter,
+  but can't see locals or class attributes, and a typo only shows up when the decorator runs. A dict is explicit and
+  allows a computed value or a different rust name.
+- *Types go through the usual mechanism, so `Annotated` overrides work.* A first version had its own table of
+  supported constant types, which couldn't express e.g. a `u64`. Using `translate_type` means an `int` constant is
+  `i32` like an `int` argument (so `n + MAGIC_NUMBER` compiles), numpy scalars choose widths as for arguments, and
+  overrides reach anything else, e.g. `Annotated[list[int], "[i32; 3]"]`, since python's `[1, 2, 3]` is also a rust
+  array literal. The cost is that a value whose default mapping isn't const-constructible (an unannotated `list`,
+  `bytes`, `complex`) fails in rustc rather than in python.
+- *The override is read from the python variable's annotation, not passed in the dict.* This mirrors how arguments
+  are typed. The alternative, an optional `(type, value)` pair in the dict, is explicit and works for computed values
+  and locals. The annotation is matched by key name, so renaming the key, or passing a computed value or a local,
+  silently drops the override. If the default type still compiles, the width changes without an error. Accepted for
+  the more natural syntax; documented in the README.
+- *`str` → `&str` is a constants-only special case.* AGENTS.md prefers overrides to special cases, but the default
+  mapping (`String`) can never be built in a const, so without it every string constant would need
+  `Annotated[str, "&str"]`. It only applies when there's no override.
+- *Only the needed annotations are evaluated.* The decorator runs mid-import, and annotations of variables defined so
+  far are visible on 3.13–3.15. But on 3.14+ (lazy annotations, PEP 649), evaluating them all raises `NameError` if
+  any *unrelated* earlier annotation refers to a name defined later. So 3.14+ reads them with
+  `annotationlib.Format.FORWARDREF`. String annotations (`from __future__ import annotations`, or quoted) are then
+  `eval`ed individually in the module's namespace, as `typing.get_type_hints` does. 3.13 evaluates module annotations
+  eagerly, so `inspect.get_annotations` can't raise there; that branch is `pragma: no cover` because coverage runs on
+  3.14, and it goes when 3.13 support is dropped. Annotations are only read when `constants` is given, so existing
+  code can't be affected.
+- *No change-detection change.* The constants are part of `lib.rs`, which the hash already covers.
+
+**Follow-ups**
+- The 3.14+ case of an unrelated forward reference is verified manually but not by a test: an unquoted forward
+  reference is a `NameError` at import time on 3.13, so it can't live in a test module run on every version.
+- Values are rendered with `str()`, so containers only work where python's repr is also rust syntax (numeric
+  lists/tuples). Containers of strings, for example, don't.
+- Enum members aren't supported directly; pass `.value` (e.g. `{"A": X.A.value}`).
+- Values are captured at decoration time; reassigning the python variable afterwards has no effect (documented).
+- An unused constant produces a `dead_code` warning in `build.log`.
+
+---
+
 ## 2026-10-10 — Stop compiled modules replacing their Python module in `sys.modules`
 
 **Why** — Re-running `from helper import f` after `f` had been called failed with

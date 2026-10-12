@@ -138,6 +138,7 @@ name | type | default | description
 `profile` | `dict[str, str] \| None` | `None` | Overrides to (release mode) [profile](https://doc.rust-lang.org/cargo/reference/profiles.html), e.g. optimisation level, strip symbols, etc.
 `edition` | `str` | `"2024"` | The rust edition
 `help` | `str \| None` | `None` | Docstring for the function
+`constants` | `dict[str, Any] \| None` | `None` | Python values to define as module-level rust constants, e.g. `constants={"MAGIC_NUMBER": MAGIC_NUMBER}`. See [Constants](#constants)
 
 ## Performance
 
@@ -599,6 +600,47 @@ def use_modulo(func: Annotated[Callable[[int], int], "&Bound<'py, PyAny>"], i: i
 ```
 
 See the examples in [test_callable.py](src/test/test_callable.py) for more detail.
+
+## Constants
+
+Python values can be made available to rust code via the `constants` parameter. Each entry becomes a `const` item in
+the extension module:
+
+```py
+MAGIC_NUMBER = 19937
+
+
+@rust(py=False, constants={"MAGIC_NUMBER": MAGIC_NUMBER})
+def f(n: int) -> int:
+    """
+    Ok(n + MAGIC_NUMBER)
+    """
+```
+
+generates `const MAGIC_NUMBER: i32 = 19937;`. The rust type is translated using the same
+[mapping](#default-mapping) as arguments, so that constants and arguments can be used together. If the module-level
+python variable with the same name as the constant is annotated, the annotation is used, so the type can be
+overridden in the usual way. Otherwise, the type of the value is used:
+
+```py
+BIG: Annotated[int, "u64"] = 2**40  # const BIG: u64 = 1099511627776;
+SCALE: Final = 0.5  # Final is ignored: const SCALE: f64 = 0.5;
+PRIMES: Annotated[list[int], "[i32; 3]"] = [2, 3, 5]  # const PRIMES: [i32; 3] = [2, 3, 5];
+
+
+@rust(py=False, constants={"BIG": BIG, "SCALE": SCALE, "PRIMES": PRIMES})
+def g() -> None: ...
+```
+
+Note:
+
+- `str` translates to `&str` rather than `String`, which can't be constructed in a constant.
+- only the annotation of a module-level variable with the same name as the key is used. A computed value, a local
+variable, or a key that differs from the variable name gets the default type for its value.
+- constants are module-level, so a constant declared by one function is visible to all functions in the same
+extension module. Declaring the same constant identically in several functions is fine, but declaring it with
+different values is a compilation error (E0428).
+- the value is captured when the function is decorated, so subsequently reassigning the python variable has no effect.
 
 ## Configuration
 

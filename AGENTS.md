@@ -170,6 +170,7 @@ src/
     test_compound_types.py
     test_compound_type_error.py
     test_config.py
+    test_constants.py
     test_container_types.py
     test_edition_conflict.py
     test_edition_invalid.py
