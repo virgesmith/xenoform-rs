@@ -22,6 +22,63 @@ Entry template:
 
 ---
 
+## 2026-10-12 — Default mappings for the remaining numpy integer widths
+
+**Why** — beahiv's `decode_batch` kernel returns a `uint8` array. Even with a rust override on the whole return
+tuple, every element type must have a default mapping (see Follow-ups), and `np.uint8` had none.
+
+**What** — `DEFAULT_TYPE_MAPPING` gains `np.int8`/`np.int16` → `i8`/`i16` and `np.uint8`…`np.uint64` → `u8`…`u64`.
+Covered by `test_translate_constant` cases, which go through `translate_type`. The README and skill mapping tables are
+updated. `np.float16` replaces `np.uint8` as the unsupported example.
+
+**Follow-ups** — An override doesn't stop `RustTypeTree` translating the subtypes of the overridden type
+(extension_types.py, `__init__`), so an override can't yet stand in for an unmapped *inner* type. Skipping subtypes
+when `override` is set would make it a real escape hatch, but needs checking against everything that reads `subtypes`.
+
+---
+
+## 2026-10-12 — Explicit constant types via `rust_constant`; annotations no longer read
+
+**Why** — The first downstream use (beahiv's `encode_batch`) imported its constants from another module
+(`from .cell_id import Q_OFFSET`) and annotated them there as `Annotated[int, "i64"]`. Those annotations were never
+seen: an annotation is stored in the declaring module's `__annotations__`, not on the value, and the import binds only
+the value. The constants silently became `i32`, still compiled, and needed `as i64` casts in the rust body. This is the
+"silently drops the override" risk recorded in the entry below, hit on the first real use.
+
+**What**
+- New public `rust_constant(value, rust_type: str) -> RustConstant` (utils.py, exported with `RustConstant`).
+  `constants={"Q_OFFSET": rust_constant(Q_OFFSET, "i64")}` gives `const Q_OFFSET: i64 = ...;`. A bare value is typed
+  from `type(value)` as before. A non-string `rust_type` raises `RustConfigError`.
+- Removed the annotation lookup: `_translate_constants` no longer takes `func`, and the `annotationlib`/`FORWARDREF`
+  reading, the `eval` of string annotations, the `Final` unwrapping and the 3.13 `pragma: no cover` branch are gone.
+  `translate_constant(name, value)` unwraps a `RustConstant` itself.
+- Tests: `test_annotations_are_ignored` pins the new behaviour, using a constant imported from `other_module` that is
+  annotated there. The `Annotated`/`Final` cases became `rust_constant` cases.
+- README "Constants" has an IMPORTANT box explaining why it isn't `Annotated`. AGENTS.md records constants as the one
+  exception to "`Annotated` is the escape hatch". The skill lists the `constants` parameter, which it had omitted.
+
+**Design decisions**
+- *Supersedes "the override is read from the python variable's annotation" below.* That was chosen for syntax that
+  matches arguments. But an argument's annotation is part of the function signature, so it is always available. A
+  constant's annotation is only found if the variable was declared, under the same name, in the decorated function's
+  own module. Imported, computed, local and renamed constants all lose it, without an error. An explicit type that can't
+  get lost is worth the less "natural" syntax.
+- *Removed, not kept alongside.* Keeping the lookup as a fallback would leave two ways to type a constant, and the
+  silent failure for any annotated constant that's imported. The feature is unreleased (only on `module-constants`,
+  after v0.1.6), so removing it breaks nobody.
+- *Following the import was rejected.* Parsing the module for `from m import NAME` and reading `m.__annotations__` is
+  possible, but misses `import m; m.NAME`, aliases, re-exports through `__init__`, and computed values.
+- *A wrapper, not a `(value, type)` tuple.* A tuple is already a valid constant value (`(1, 2.5)` → `(i32, f64)`), so
+  `(5, "i64")` would be ambiguous.
+- *`rust_type` is a rust type string, not a python type run through `translate_type`.* Accepting `Annotated[...]` here
+  would bring back the syntax this removes, and anyone wanting a non-default type already knows the rust spelling.
+  Passing a python type by mistake raises, rather than being stringified into nonsense rust.
+
+**Follow-ups** — A shared constant's type is now repeated at each `rust_constant` call site. Sharing one `constants`
+dict across functions (as beahiv does) avoids that.
+
+---
+
 ## 2026-10-12 — Module-level constants via `@rust(constants=...)`
 
 **Why** — Rust code had no access to constants defined in Python. The rust body is the docstring, and an f-string is

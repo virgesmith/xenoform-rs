@@ -12,9 +12,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-if sys.version_info >= (3, 14):
-    import annotationlib
-
 from xenoform_rs.config import get_config
 from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError, RustDiagnostic, RustTypeError
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
@@ -303,28 +300,14 @@ def _validate_constant_name(name: str) -> None:
         )
 
 
-def _translate_constants(func: Callable[..., Any], constants: dict[str, Any]) -> list[str]:
+def _translate_constants(constants: dict[str, Any]) -> list[str]:
     """
-    Translate constants to rust const items, each typed by the annotation of the module-level variable of the same
-    name, if there is one
+    Translate constants to rust const items. Types come from the dict values alone (see `rust_constant` for why
+    annotations on the python variables are not consulted)
     """
-    if not constants:
-        return []
-    module = sys.modules[func.__module__]
-    # Only the annotations that are needed are evaluated: under lazy annotations (3.14+), or `from __future__ import
-    # annotations`, an unrelated one may refer to a name that isn't defined yet
-    if sys.version_info >= (3, 14):
-        annotations = annotationlib.get_annotations(module, format=annotationlib.Format.FORWARDREF)
-    else:  # pragma: no cover - 3.13 evaluates module annotations eagerly, so reading them can't raise
-        annotations = inspect.get_annotations(module)
-    constant_defs = []
-    for name, value in constants.items():
+    for name in constants:
         _validate_constant_name(name)
-        annotation = annotations.get(name)
-        if isinstance(annotation, str):
-            annotation = eval(annotation, vars(module))
-        constant_defs.append(translate_constant(name, value, annotation))
-    return constant_defs
+    return [translate_constant(name, value) for name, value in constants.items()]
 
 
 def _check_build_fetch_module_impl(
@@ -472,7 +455,7 @@ def rust[**P, R](
         module_name = module_name or f"{Path(inspect.getfile(func)).stem}"
         _validate_module_name(module_name)
 
-        constant_defs = _translate_constants(func, constants or {})
+        constant_defs = _translate_constants(constants or {})
 
         function_body = sig + " {" + (func.__doc__ or "") + "}"
 

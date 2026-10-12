@@ -1,4 +1,8 @@
 from abc import abstractmethod
+from typing import Annotated
+
+# imported by test_constants: the annotation stays here, only the value travels with the import
+BIG: Annotated[int, "u64"] = 2**40
 
 
 class Base:

@@ -1,18 +1,20 @@
 import math
-from typing import Annotated, Any, Final
+from typing import Annotated
 
 import numpy as np
 import pytest
 
-from xenoform_rs import CompilationError, RustConfigError, RustTypeError, rust
+from xenoform_rs import CompilationError, RustConfigError, RustConstant, RustTypeError, rust, rust_constant
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import translate_constant
 
+from .other_module import BIG
+
 MAGIC_NUMBER = 19937
-SCALE: Final = 0.5
+SCALE = 0.5
 GREETING = 'say "hi"\\'
-BIG: Annotated[int, "u64"] = 2**40
-OFFSET: "Annotated[int, 'u8']" = 7  # a string annotation, as with `from __future__ import annotations`
+# the annotation is NOT used to type the constant -- only rust_constant does that, see test_annotations_are_ignored
+OFFSET: Annotated[int, "u8"] = 7
 
 
 @rust(py=False, constants={"MAGIC_NUMBER": MAGIC_NUMBER, "SCALE": SCALE})
@@ -30,8 +32,8 @@ def describe() -> str:  # ty: ignore[empty-body]
     """
 
 
-# the types are overridden by the annotations of the python variables
-@rust(py=False, constants={"BIG": BIG, "OFFSET": OFFSET})
+# BIG is imported, so no annotation could type it here: rust_constant can
+@rust(py=False, constants={"BIG": rust_constant(BIG, "u64"), "OFFSET": rust_constant(OFFSET, "u8")})
 def overridden() -> Annotated[tuple[int, int], "(u64, u8)"]:  # ty: ignore[empty-body]
     """
     Ok((u64::MAX - BIG, OFFSET.wrapping_add(250)))
@@ -46,8 +48,14 @@ def test_constants_are_module_level() -> None:
     assert describe() == f"{GREETING} {MAGIC_NUMBER} true {SCALE}"
 
 
-def test_constant_type_overrides() -> None:
+def test_rust_constant_types() -> None:
     assert overridden() == (2**64 - 1 - BIG, 1)
+
+
+def test_annotations_are_ignored() -> None:
+    """Neither an imported variable's annotation (in other_module) nor a local one is consulted: the default applies"""
+    assert translate_constant("BIG", BIG) == "const BIG: i32 = 1099511627776;"
+    assert translate_constant("OFFSET", OFFSET) == "const OFFSET: i32 = 7;"
 
 
 @pytest.mark.parametrize(
@@ -60,8 +68,14 @@ def test_constant_type_overrides() -> None:
         (math.nan, "const X: f64 = f64::NAN;"),
         (math.inf, "const X: f64 = f64::INFINITY;"),
         (-math.inf, "const X: f64 = f64::NEG_INFINITY;"),
+        (np.int8(-7), "const X: i8 = -7;"),
+        (np.int16(-7), "const X: i16 = -7;"),
         (np.int32(7), "const X: i32 = 7;"),
         (np.int64(2**40), "const X: i64 = 1099511627776;"),
+        (np.uint8(255), "const X: u8 = 255;"),
+        (np.uint16(7), "const X: u16 = 7;"),
+        (np.uint32(7), "const X: u32 = 7;"),
+        (np.uint64(2**63), "const X: u64 = 9223372036854775808;"),
         (np.float32(0.25), "const X: f32 = 0.25;"),
         (np.float32(math.inf), "const X: f32 = f32::INFINITY;"),
         (np.float64(0.25), "const X: f64 = 0.25;"),
@@ -73,23 +87,32 @@ def test_translate_constant(value: object, expected: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("annotation", "value", "expected"),
+    ("value", "rust_type", "expected"),
     [
-        (int, 1, "const X: i32 = 1;"),
-        (Annotated[int, "u64"], 2**40, "const X: u64 = 1099511627776;"),
-        (Final, 1, "const X: i32 = 1;"),
-        (Final[Annotated[int, "u8"]], 1, "const X: u8 = 1;"),
-        (str, "a", 'const X: &str = "a";'),
-        (Annotated[str, "&'static str"], "a", 'const X: &\'static str = "a";'),
-        (tuple[int, float], (1, 2.5), "const X: (i32, f64) = (1, 2.5);"),
-        (Annotated[list[int], "[i32; 3]"], [1, 2, 3], "const X: [i32; 3] = [1, 2, 3];"),
+        (2**40, "u64", "const X: u64 = 1099511627776;"),
+        (1.0, "f32", "const X: f32 = 1.0;"),
+        (math.nan, "f32", "const X: f32 = f32::NAN;"),
+        ("a", "&'static str", 'const X: &\'static str = "a";'),
+        ((1, 2.5), "(i32, f64)", "const X: (i32, f64) = (1, 2.5);"),
+        ([1, 2, 3], "[i32; 3]", "const X: [i32; 3] = [1, 2, 3];"),
+        (np.uint8(1), "u32", "const X: u32 = 1;"),
     ],
 )
-def test_translate_annotated_constant(annotation: Any, value: object, expected: str) -> None:
-    assert translate_constant("X", value, annotation) == expected
+def test_translate_rust_constant(value: object, rust_type: str, expected: str) -> None:
+    assert translate_constant("X", rust_constant(value, rust_type)) == expected
 
 
-@pytest.mark.parametrize("value", [None, np.uint8(1), np.bool_(True)])
+def test_rust_constant() -> None:
+    assert rust_constant(1, "u8") == RustConstant(1, "u8")
+
+
+@pytest.mark.parametrize("rust_type", [int, np.int64, Annotated[int, "i64"]])
+def test_rust_constant_needs_a_rust_type_string(rust_type: object) -> None:
+    with pytest.raises(RustConfigError, match="rust_constant needs a rust type string"):
+        rust_constant(1, rust_type)  # ty: ignore[invalid-argument-type]
+
+
+@pytest.mark.parametrize("value", [None, np.float16(1), np.bool_(True)])
 def test_translate_constant_unsupported_type(value: object) -> None:
     with pytest.raises(RustTypeError, match="Don't know a Rust type"):
         translate_constant("X", value)
@@ -132,4 +155,4 @@ def test_constant_value_change_triggers_rebuild() -> None:
 if __name__ == "__main__":
     test_constants_are_usable_in_rust()
     test_constants_are_module_level()
-    test_constant_type_overrides()
+    test_rust_constant_types()
