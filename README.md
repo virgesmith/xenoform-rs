@@ -624,6 +624,21 @@ won't interfere with a host application's own logging setup.
 By default, if the interpreter is free-threaded, extension modules will be built without the GIL. This requires the extension code to be threadsafe. If xenoform detects an environment variable `XENOFORM_RS_DISABLE_FT`, free-threading is
 disabled.
 
+## Notebooks
+
+In a Jupyter notebook:
+
+- **`@rust` functions defined in a cell need a `module_name` override**, e.g.
+  `@rust(py=False, module_name="nb")`. By default the module is named after the file the function is defined in,
+  and Jupyter's temporary cell files don't have valid module names.
+- **Running the cell that defines a `@rust` function only registers it.** Nothing is compiled until a cell calls
+  one of the module's functions. Then all the functions registered in the module so far are compiled together, and
+  any compile error appears in the output of the *calling* cell.
+- **Changes to `@rust` functions aren't picked up until the kernel is restarted.** This applies to editing or
+  adding functions, whether they're in a cell or in a `.py` file the notebook imports (`%autoreload` doesn't help).
+  A Python process can't unload a compiled module. After a restart, only modules whose source has changed are
+  recompiled.
+
 ## Troubleshooting
 
 The generated module source code is written to `src/lib.rs` in a module-specific folder (e.g. `ext/my_module_ext`).

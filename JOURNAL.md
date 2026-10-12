@@ -22,6 +22,46 @@ Entry template:
 
 ---
 
+## 2026-10-10 — Stop compiled modules replacing their Python module in `sys.modules`
+
+**Why** — Re-running `from helper import f` after `f` had been called failed with
+`ImportError: cannot import name 'f' from 'helper' (.../libhelper.so)`. This was first noticed as a notebook quirk
+(re-running an import cell), but scripts are affected too. The default rust module name is the defining file's stem,
+and the compiled module was registered as `sys.modules[module_name]`. So it replaced the Python module of the same
+name, and later imports found the extension, which only has the `_`-prefixed functions. A file such as `utils.py`
+would also replace any other module registered under that name.
+
+**What**
+- The compiled module is loaded as `<module_name>_ext.<module_name>` (e.g. `helper_ext.helper`), the same name as
+  its build folder and log messages, so it no longer collides with the Python module.
+- `test_reimport.py` reproduces the bug with a top-level module (the case that collides) and checks that the
+  Python module is left in place.
+- README gains a short *Notebooks* section, which comes from the same notebook investigation. Cells defining
+  `@rust` functions need a `module_name` override, and changes to `@rust` functions need a kernel restart. Both
+  rules were checked in a real Jupyter kernel. The section is deliberately just the two rules rather than a list of
+  failure modes: edits after a call are silently ignored, edits before a call give E0428, and new functions give
+  `AttributeError`. All of these are fixed by the same restart, so users don't need to tell them apart.
+
+**Design decisions**
+- *A namespaced key, not a renamed Rust module.* For single-phase init, Python looks for the extension's init
+  function using the last part of a dotted name (`PyInit_helper`), so nothing on the Rust side changes: generated
+  source, symbols, library names and existing builds all stay as they are. Renaming the module (e.g. `helper_rs`)
+  would have invalidated every build, and would still collide when a user's `module_name` matched their file name.
+- *Keep the `sys.modules` registration.* Registering a module before running it is the standard import protocol.
+  The problem was only the key.
+- *The fix is at xenoform's call site, not in `load_rust_module`.* `load_rust_module` is public API for loading
+  modules built some other way, and its callers choose the name.
+- *No call-time cost.* The name is only used when the module is first loaded. Calls go through the `lru_cache`d
+  `_get_function`, which returns the function object directly. Measured: ~200 ns per call before and after.
+- `test_nested.py` loads the same library again under the bare name. pyo3 0.29 initialises a second, separate
+  module object for that, which works, so the test is unchanged.
+
+**Follow-ups**
+- Checked locally on GIL 3.14 only. Free-threaded 3.14t and 3.15, where pyo3 uses the PEP 793 module export API,
+  are covered by CI.
+
+---
+
 ## 2026-10-10 — Support Python 3.13–3.15; bump CI actions and dev tooling
 
 **Why** — Python 3.15 has been released, and the project supports only the three latest minor versions. So 3.15

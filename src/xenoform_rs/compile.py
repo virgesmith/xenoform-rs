@@ -385,7 +385,9 @@ def _check_build_fetch_module_impl(
             f"Check cargo output for build errors or different naming conventions."
         )
 
-    return load_rust_module(lib_path, module_name)
+    # namespaced, as module_name defaults to the defining python module's name, which a bare sys.modules entry would
+    # replace (breaking any later import of it). The init function is found from the last component of the name
+    return load_rust_module(lib_path, f"{ext_name}.{module_name}")
 
 
 @lru_cache(maxsize=256)
