@@ -22,6 +22,57 @@ Entry template:
 
 ---
 
+## 2026-10-13 — Constants by name: `constants=["MAGIC_NUMBER", "BIG: u64"]`
+
+**Why** — `constants={"BIG": rust_constant(BIG, "u64")}` was clunky. Every name was written twice, overriding the type
+needed an extra import and a wrapper call, and the README needed a long box to justify the syntax.
+
+**What**
+- `constants` is now `list[str]`. Each entry is `"NAME"` or `"NAME: rust_type"`. The value is looked up by name where
+  the decorator is applied: first the caller frame's locals (function locals, or the class body for methods), then its
+  globals (module-level and imported names). The rust name is always the python name.
+- `rust_constant` and `RustConstant` are removed. `translate_constant(name, value, rust_type=None)` takes the type
+  directly. `_parse_constant` (compile.py) splits and validates an entry. An unknown name, an invalid name or a missing
+  type after the `:` raises `RustConfigError` at decoration time.
+- Tests cover imported, class-body and local constants, a local shadowing a global, entry parsing, and unknown names.
+  The conflict test now gets two definitions by reassigning a local between decorations.
+
+**Design decisions**
+- *Supersedes "a dict of values, not a list of names" (the 2026-10-12 constants entry).* That entry rejected names
+  because `func.__globals__` can't see locals or class attributes. Reading the caller's frame (`sys._getframe(1)` in
+  the decorator) sees exactly the scope the decorator is written in, so both work. Imported names were never a
+  problem: an import binds a global. The other objection, typos, was weak. An unknown name now fails at decoration
+  time, where a typo in a dict key only failed in rustc.
+- *Frame inspection is unusual Python.* It's confined to one line in `rust()`, the frame isn't stored, and the frame is
+  always our own direct caller on the same thread, so free-threading isn't a concern. The alternative,
+  `func.__globals__` plus `inspect.getclosurevars`, would still miss class bodies, and closure variables only include
+  names the function body uses, while the rust body (a docstring) uses none.
+- *No dict form kept for renames or computed values* (maintainer decision: "if there's a name clash then tough").
+  One form is simpler to document and test. A computed value is assigned to a variable first.
+- *The type goes in the entry, as in rust (`"BIG: u64"`).* This reads like the generated `const BIG: u64`, needs no
+  import, and keeps the type next to the name, so an imported constant can't lose it. The previous entry's reasons for
+  not reading `Annotated` annotations still hold. The entry is split on the first `:`. A name can't contain one, so
+  paths such as `std::primitive::u64` survive.
+- *Locals shadow globals* (`ChainMap(f_locals, f_globals)`), as in normal python name resolution.
+
+**Follow-ups**
+- A variable from an enclosing function is only visible if the decorating scope also uses it (it's only then a free
+  variable in `f_locals`). Documented in the README, not worked around.
+- Dotted names (`"other_module.CONST"`) aren't supported: they fail name validation. Rejected for now: mangling to
+  `other_module_CONST` invents a name that appears nowhere in python, and `from other_module import CONST` already
+  works. Mirroring the path as rust `other_module::CONST` would be explicit, but would need nested `mod` generation
+  and could collide with `modules=`.
+- Linters can't see names inside strings, so an import used only by `constants` is flagged F401, and the pre-commit
+  `ruff-check --fix` would delete it. The constant then fails loudly (`not found`), not silently. Documented in the
+  README (`# noqa: F401`). It's the main cost of names over values; revisit if it proves a nuisance in practice.
+- Enum members still aren't supported: `type(X.A)` is `X`, which has no mapping, and with an explicit type the value
+  renders as `X.A`, which isn't valid rust. Proposed: an `Enum` class in `constants` becomes
+  `mod X { pub const A: ... }`, so `X.A` is `X::A` in rust, with members' `.value` taken automatically. Also, the
+  "no override provided" error points at `Annotated`, which constants ignore; for constants it should suggest
+  `"NAME: <rust type>"`.
+
+---
+
 ## 2026-10-12 — Default mappings for the remaining numpy integer widths
 
 **Why** — beahiv's `decode_batch` kernel returns a `uint8` array. Even with a rust override on the whole return

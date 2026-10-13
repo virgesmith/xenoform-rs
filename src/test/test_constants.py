@@ -4,7 +4,8 @@ from typing import Annotated
 import numpy as np
 import pytest
 
-from xenoform_rs import CompilationError, RustConfigError, RustConstant, RustTypeError, rust, rust_constant
+from xenoform_rs import CompilationError, RustConfigError, RustTypeError, rust
+from xenoform_rs.compile import _parse_constant, _translate_constants
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import translate_constant
 
@@ -13,11 +14,13 @@ from .other_module import BIG
 MAGIC_NUMBER = 19937
 SCALE = 0.5
 GREETING = 'say "hi"\\'
-# the annotation is NOT used to type the constant -- only rust_constant does that, see test_annotations_are_ignored
+ENABLED = True
+# the annotation is NOT used to type the constant -- only the "NAME: type" entry does that, see
+# test_annotations_are_ignored
 OFFSET: Annotated[int, "u8"] = 7
 
 
-@rust(py=False, constants={"MAGIC_NUMBER": MAGIC_NUMBER, "SCALE": SCALE})
+@rust(py=False, constants=["MAGIC_NUMBER", "SCALE"])
 def add_magic(n: int) -> float:  # ty: ignore[empty-body]
     """
     Ok(((n + MAGIC_NUMBER) as f64) * SCALE)
@@ -25,19 +28,31 @@ def add_magic(n: int) -> float:  # ty: ignore[empty-body]
 
 
 # MAGIC_NUMBER is declared again (identically) and GREETING is only declared here, but all are module-level
-@rust(py=False, constants={"MAGIC_NUMBER": MAGIC_NUMBER, "GREETING": GREETING, "ENABLED": True})
+@rust(py=False, constants=["MAGIC_NUMBER", "GREETING", "ENABLED"])
 def describe() -> str:  # ty: ignore[empty-body]
     """
     Ok(format!("{GREETING} {MAGIC_NUMBER} {ENABLED} {SCALE}"))
     """
 
 
-# BIG is imported, so no annotation could type it here: rust_constant can
-@rust(py=False, constants={"BIG": rust_constant(BIG, "u64"), "OFFSET": rust_constant(OFFSET, "u8")})
+# BIG is imported: found by name all the same, and typed by the entry, since its annotation stays in other_module
+@rust(py=False, constants=["BIG: u64", "OFFSET:u8"])
 def overridden() -> Annotated[tuple[int, int], "(u64, u8)"]:  # ty: ignore[empty-body]
     """
     Ok((u64::MAX - BIG, OFFSET.wrapping_add(250)))
     """
+
+
+class Holder:
+    STEP = 3
+
+    # found in the class body, where the decorator is applied
+    @staticmethod
+    @rust(py=False, constants=["STEP: u8"])
+    def step() -> int:  # ty: ignore[empty-body]
+        """
+        Ok(STEP as i32 * 2)
+        """
 
 
 def test_constants_are_usable_in_rust() -> None:
@@ -48,14 +63,67 @@ def test_constants_are_module_level() -> None:
     assert describe() == f"{GREETING} {MAGIC_NUMBER} true {SCALE}"
 
 
-def test_rust_constant_types() -> None:
+def test_typed_constants() -> None:
     assert overridden() == (2**64 - 1 - BIG, 1)
+
+
+def test_class_attribute_constant() -> None:
+    assert Holder.step() == 6
+
+
+def test_local_constant_shadows_global() -> None:
+    MAGIC_NUMBER = -1  # noqa: N806
+
+    @rust(py=False, module_name="test_constants_local", constants=["MAGIC_NUMBER"])
+    def local_magic() -> int:  # ty: ignore[empty-body]
+        "Ok(MAGIC_NUMBER)"
+
+    assert local_magic() == MAGIC_NUMBER
 
 
 def test_annotations_are_ignored() -> None:
     """Neither an imported variable's annotation (in other_module) nor a local one is consulted: the default applies"""
-    assert translate_constant("BIG", BIG) == "const BIG: i32 = 1099511627776;"
-    assert translate_constant("OFFSET", OFFSET) == "const OFFSET: i32 = 7;"
+    assert _translate_constants(["BIG", "OFFSET"], globals()) == [
+        "const BIG: i32 = 1099511627776;",
+        "const OFFSET: i32 = 7;",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        ("X", ("X", None)),
+        ("X: u64", ("X", "u64")),
+        ("X:u64", ("X", "u64")),
+        ("  X  :  [i32; 3] ", ("X", "[i32; 3]")),
+        ("X: std::primitive::u64", ("X", "std::primitive::u64")),
+    ],
+)
+def test_parse_constant(entry: str, expected: tuple[str, str | None]) -> None:
+    assert _parse_constant(entry) == expected
+
+
+@pytest.mark.parametrize("entry", ["X:", "X: "])
+def test_parse_constant_missing_type(entry: str) -> None:
+    with pytest.raises(RustConfigError, match="Missing rust type for constant 'X'"):
+        _parse_constant(entry)
+
+
+@pytest.mark.parametrize("name", ["not valid", "1X", "type", "fn"])
+def test_invalid_constant_name(name: str) -> None:
+    with pytest.raises(RustConfigError, match=f"Invalid constant name: '{name}'"):
+
+        @rust(py=False, constants=[f"{name}: i32"])
+        def f() -> None:
+            "Ok(())"
+
+
+def test_unknown_constant() -> None:
+    with pytest.raises(RustConfigError, match="Constant 'MISSING' not found"):
+
+        @rust(py=False, constants=["MISSING"])
+        def f() -> None:
+            "Ok(())"
 
 
 @pytest.mark.parametrize(
@@ -98,18 +166,8 @@ def test_translate_constant(value: object, expected: str) -> None:
         (np.uint8(1), "u32", "const X: u32 = 1;"),
     ],
 )
-def test_translate_rust_constant(value: object, rust_type: str, expected: str) -> None:
-    assert translate_constant("X", rust_constant(value, rust_type)) == expected
-
-
-def test_rust_constant() -> None:
-    assert rust_constant(1, "u8") == RustConstant(1, "u8")
-
-
-@pytest.mark.parametrize("rust_type", [int, np.int64, Annotated[int, "i64"]])
-def test_rust_constant_needs_a_rust_type_string(rust_type: object) -> None:
-    with pytest.raises(RustConfigError, match="rust_constant needs a rust type string"):
-        rust_constant(1, rust_type)  # ty: ignore[invalid-argument-type]
+def test_translate_typed_constant(value: object, rust_type: str, expected: str) -> None:
+    assert translate_constant("X", value, rust_type) == expected
 
 
 @pytest.mark.parametrize("value", [None, np.float16(1), np.bool_(True)])
@@ -118,21 +176,17 @@ def test_translate_constant_unsupported_type(value: object) -> None:
         translate_constant("X", value)
 
 
-@pytest.mark.parametrize("name", ["not valid", "1X", "type", "fn"])
-def test_invalid_constant_name(name: str) -> None:
-    with pytest.raises(RustConfigError, match=f"Invalid constant name: '{name}'"):
-
-        @rust(py=False, constants={name: 1})
-        def f() -> None:
-            "Ok(())"
-
-
 def test_conflicting_constants_fail_to_compile() -> None:
-    @rust(py=False, module_name="test_constants_conflict", constants={"K": 1})
+    """The value is captured when the decorator is applied, so reassigning K gives two different definitions"""
+    K = 1  # noqa: N806
+
+    @rust(py=False, module_name="test_constants_conflict", constants=["K"])
     def f() -> int:  # ty: ignore[empty-body]
         "Ok(K)"
 
-    @rust(py=False, module_name="test_constants_conflict", constants={"K": 2})
+    K = 2  # noqa: F841, N806 -- only read by the decorator, from the frame
+
+    @rust(py=False, module_name="test_constants_conflict", constants=["K"])
     def g() -> int:  # ty: ignore[empty-body]
         "Ok(K)"
 
@@ -155,4 +209,5 @@ def test_constant_value_change_triggers_rebuild() -> None:
 if __name__ == "__main__":
     test_constants_are_usable_in_rust()
     test_constants_are_module_level()
-    test_rust_constant_types()
+    test_typed_constants()
+    test_class_attribute_constant()

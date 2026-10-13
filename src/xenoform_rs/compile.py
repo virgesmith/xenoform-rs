@@ -5,8 +5,8 @@ import os
 import re
 import subprocess
 import sys
-from collections import defaultdict
-from collections.abc import Callable
+from collections import ChainMap, defaultdict
+from collections.abc import Callable, Mapping
 from functools import lru_cache, wraps
 from pathlib import Path
 from types import ModuleType
@@ -293,21 +293,31 @@ def _validate_module_name(module_name: str) -> None:
         )
 
 
-def _validate_constant_name(name: str) -> None:
+def _parse_constant(entry: str) -> tuple[str, str | None]:
+    """Split a `constants` entry, "NAME" or "NAME: rust_type", into its name and optional rust type"""
+    name, colon, rust_type = (part.strip() for part in entry.partition(":"))
     if not name.isidentifier() or name in _RUST_KEYWORDS:
         raise RustConfigError(
             f"Invalid constant name: '{name}'. Use a valid identifier that isn't a Rust reserved word"
         )
+    if colon and not rust_type:
+        raise RustConfigError(f"Missing rust type for constant '{name}'. Use e.g. '{name}: u64', or just '{name}'")
+    return name, rust_type or None
 
 
-def _translate_constants(constants: dict[str, Any]) -> list[str]:
+def _translate_constants(entries: list[str], namespace: Mapping[str, Any]) -> list[str]:
     """
-    Translate constants to rust const items. Types come from the dict values alone (see `rust_constant` for why
-    annotations on the python variables are not consulted)
+    Translate constants to rust const items, looking each value up by name in the namespace. The type is given in the
+    entry, not read from any annotation on the python variable: an annotation belongs to the module that declares it,
+    so it's lost when the constant is imported, and the type would silently fall back to the default
     """
-    for name in constants:
-        _validate_constant_name(name)
-    return [translate_constant(name, value) for name, value in constants.items()]
+    constant_defs = []
+    for entry in entries:
+        name, rust_type = _parse_constant(entry)
+        if name not in namespace:
+            raise RustConfigError(f"Constant '{name}' not found in the scope the function is defined in")
+        constant_defs.append(translate_constant(name, namespace[name], rust_type))
+    return constant_defs
 
 
 def _check_build_fetch_module_impl(
@@ -432,7 +442,7 @@ def rust[**P, R](
     profile: dict[str, str] | None = None,
     edition: str | None = None,
     help: str | None = None,
-    constants: dict[str, Any] | None = None,
+    constants: list[str] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator factory for compiling rust function implementations into extension modules.
@@ -455,7 +465,10 @@ def rust[**P, R](
         module_name = module_name or f"{Path(inspect.getfile(func)).stem}"
         _validate_module_name(module_name)
 
-        constant_defs = _translate_constants(constants or {})
+        # the caller is the scope the decorator is applied in, so its locals cover class bodies and functions, and its
+        # globals cover module-level and imported names
+        caller = sys._getframe(1)
+        constant_defs = _translate_constants(constants or [], ChainMap(caller.f_locals, caller.f_globals))
 
         function_body = sig + " {" + (func.__doc__ or "") + "}"
 

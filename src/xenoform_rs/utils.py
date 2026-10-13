@@ -7,7 +7,6 @@ import sys
 import sysconfig
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
 from importlib.machinery import ExtensionFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from operator import add
@@ -74,39 +73,14 @@ def _translate_value(value: Any, rust_type: str) -> str:
             return str(value)
 
 
-@dataclass(frozen=True)
-class RustConstant:
-    """A constant's value and explicit rust type, as made by `rust_constant`"""
-
-    value: Any
-    rust_type: str
-
-
-def rust_constant(value: Any, rust_type: str) -> RustConstant:
+def translate_constant(name: str, value: Any, rust_type: str | None = None) -> str:
     """
-    Give a constant an explicit rust type, e.g. `constants={"BIG": rust_constant(BIG, "u64")}`.
-
-    The type goes here rather than in an `Annotated` annotation on the python variable because an annotation belongs to
-    the module that declares it, not to the value: `from m import BIG` binds the bare value, so an annotation in `m` is
-    invisible from the decorated function's module, and the type would silently fall back to the default.
+    Translate a python value to a rust const item. Without an explicit rust type, the type is translated from the
+    value's type
     """
-    if not isinstance(rust_type, str):
-        raise RustConfigError(f"rust_constant needs a rust type string, e.g. 'i64', not {rust_type!r}")
-    return RustConstant(value, rust_type)
-
-
-def translate_constant(name: str, value: Any) -> str:
-    """
-    Translate a python value to a rust const item. A `RustConstant` carries its rust type, otherwise the type is
-    translated from the value's type
-    """
-    if isinstance(value, RustConstant):
-        rust_type, value = value.rust_type, value.value
-    # the default mapping, String, can't be constructed in a const context
-    elif isinstance(value, str):
-        rust_type = "&str"
-    else:
-        rust_type = str(translate_type(type(value)))
+    if rust_type is None:
+        # the default mapping, String, can't be constructed in a const context
+        rust_type = "&str" if isinstance(value, str) else str(translate_type(type(value)))
     return f"const {name}: {rust_type} = {_translate_value(value, rust_type)};"
 
 
