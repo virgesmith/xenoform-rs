@@ -22,6 +22,48 @@ Entry template:
 
 ---
 
+## 2026-10-14 — Issue rustc warnings as `RustWarning` (#32, item 1)
+
+**Why** — rustc warnings (unused variables, unnecessary `mut`, dead assignments) were parsed after every build but only
+written to `build.log`, which users rarely read. They're often real mistakes or non-idiomatic habits. This is also the
+channel clippy lints will use (#32, item 2).
+
+**What**
+- `RustWarning(UserWarning)` in `errors.py`, exported from the package. It carries the `RustDiagnostic` as
+  `.diagnostic`.
+- After a successful build, `_warn` (compile.py) issues one `RustWarning` per warning-level diagnostic, shortened with
+  `_brief` and prefixed `rustc warning in module '<ext_name>':`.
+- Tests: a warning is issued with its diagnostic and attributed to the caller, a clean build issues none, and a filter
+  can make it an error. `test_rebuild_when_outdated` ignores the unused-import warning its unused `fibonacci.rs` causes.
+- README documents the warnings and how to filter them.
+
+**Design decisions**
+- *A warnings category, not `logger.warning`.* Users can silence or escalate warnings with Python's own filters (e.g.
+  pytest `filterwarnings` in CI) without any new config.
+- *The diagnostic is attached to the warning instance* (`warnings.warn(RustWarning(msg, d))`), so code using
+  `catch_warnings(record=True)` gets the structured data, as with `CompilationError.diagnostics`. Rejected: a plain
+  string message, which callers would have to parse.
+- *Attributed with `skip_file_prefixes`* (Python 3.12+) to the first frame outside the package, i.e. the call that
+  triggered the build. This is more robust than a `stacklevel`, which depends on the call path. Rejected: attributing to
+  the decorated function's definition. A crate can hold functions from several Python files (`module_name=`), and until
+  #26's span-to-docstring mapping exists we can't tell which function a warning belongs to.
+- *Only on successful builds.* On failure the `CompilationError` matters, and warnings alongside it would bury it. They
+  remain in `build.log`.
+- *One warning per diagnostic, with no `_select`-style cap*, so individual lints can be filtered by message.
+- *Command-line filters match on the message.* The issue suggested `-W error::xenoform_rs.RustWarning`, but CPython
+  won't import a third-party module to resolve a `-W`/`PYTHONWARNINGS` category ("Invalid -W option ignored: invalid
+  module name"). `PYTHONWARNINGS="error:rustc warning"` works, which is why the message prefix is fixed. In-process
+  filters and pytest config can use the category.
+
+**Follow-ups**
+- Warnings only appear when the module is rebuilt. An up-to-date module skips cargo, so they aren't repeated.
+- Lines in the message refer to the generated `src/lib.rs`, until #26's line mapping exists.
+- The test suite could set `filterwarnings = ["error::xenoform_rs.RustWarning"]` to catch generated code that starts
+  warning.
+- #32 item 2 (opt-in clippy) will reuse this channel.
+
+---
+
 ## 2026-10-13 — Constants by name: `constants=["MAGIC_NUMBER", "BIG: u64"]`
 
 **Why** — `constants={"BIG": rust_constant(BIG, "u64")}` was clunky. Every name was written twice, overriding the type

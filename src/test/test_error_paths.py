@@ -55,6 +55,8 @@ def test_validate_module_name() -> None:
         _validate_module_name("fn")
 
 
+# fibonacci.rs is copied in to cover module copying but not used, so rustc warns of an unused import
+@pytest.mark.filterwarnings("ignore::xenoform_rs.RustWarning")
 def test_rebuild_when_outdated(monkeypatch: pytest.MonkeyPatch) -> None:
     # force a checksum mismatch so the module is considered stale and rebuilt
     monkeypatch.setattr(compile_mod, "_get_module_checksum", lambda *_args: "0" * 64)

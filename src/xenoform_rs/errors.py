@@ -29,6 +29,14 @@ class CompilationError(XenoformRsError):
         self.diagnostics = list(diagnostics)
 
 
+class RustWarning(UserWarning):
+    """A rustc warning from a successful build. The full diagnostic is available as `diagnostic`"""
+
+    def __init__(self, message: str, diagnostic: RustDiagnostic) -> None:
+        super().__init__(message)
+        self.diagnostic = diagnostic
+
+
 class RustConfigError(XenoformRsError):
     pass
 
