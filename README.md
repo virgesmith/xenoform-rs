@@ -138,6 +138,7 @@ name | type | default | description
 `profile` | `dict[str, str] \| None` | `None` | Overrides to (release mode) [profile](https://doc.rust-lang.org/cargo/reference/profiles.html), e.g. optimisation level, strip symbols, etc.
 `edition` | `str` | `"2024"` | The rust edition
 `help` | `str \| None` | `None` | Docstring for the function
+`constants` | `list[str] \| None` | `None` | Names of python variables to define as module-level rust constants, optionally with a rust type, e.g. `constants=["MAGIC_NUMBER", "BIG: u64"]`. See [Constants](#constants)
 
 ## Performance
 
@@ -532,8 +533,8 @@ Python | rust
 ------ | ---
 `None` | `()`
 `int` | `i32`
-`np.int32` | `i32`
-`np.int64` | `i64`
+`np.int8` / `np.int16` / `np.int32` / `np.int64` | `i8` / `i16` / `i32` / `i64`
+`np.uint8` / `np.uint16` / `np.uint32` / `np.uint64` | `u8` / `u16` / `u32` / `u64`
 `bool` | `bool`
 `float` | `f64`
 `np.float32` | `f32`
@@ -599,6 +600,64 @@ def use_modulo(func: Annotated[Callable[[int], int], "&Bound<'py, PyAny>"], i: i
 ```
 
 See the examples in [test_callable.py](src/test/test_callable.py) for more detail.
+
+## Constants
+
+Python variables, where the intent is immutability, can be made available to rust code by naming them in the `constants`
+parameter. Each one becomes a module-level `const` item, with the same name, in the extension module:
+
+```py
+MAGIC_NUMBER = 19937
+
+
+@rust(py=False, constants=["MAGIC_NUMBER"])
+def f(n: int) -> int:
+    """
+    Ok(n + MAGIC_NUMBER)
+    """
+```
+
+generates `const MAGIC_NUMBER: i32 = 19937;`. By default the rust type is translated from the type of the value, using
+the same [mapping](#default-mapping) as arguments. To override to a different rust type, add it using rust syntax.
+Values imported from other modules can be used. If they're not used by any python code, directives to prevent
+a linter from removing the import may be needed:
+
+```py
+# BIG = 2**40
+from .config import BIG  # noqa: F401
+
+SCALE = 0.5
+PRIMES = [2, 3, 5]
+
+
+@rust(py=False, constants=["BIG: u64", "SCALE", "PRIMES: [i32; 3]"])
+def g() -> None: ...
+```
+
+generates
+
+```rust
+const BIG: u64 = 1099511627776;
+const PRIMES: [i32; 3] = [2, 3, 5];
+const SCALE: f64 = 0.5;
+```
+
+Names are looked up where the decorator is applied: local variables first (including a class body, for methods), then
+module-level and imported names. A name that isn't found raises `RustConfigError`.
+
+Note:
+
+- an `Annotated` annotation on the python variable is **not** used to type a constant, because it belongs to the
+module that declares the variable and is lost when the constant is imported. Put the type in the entry instead.
+- `str` translates to `&str` rather than `String`, which can't be constructed in a constant.
+- the rust name is always the python name. To use a computed value, assign it to a variable first.
+- a variable from an *enclosing* function is only found if the scope the decorator is applied in also uses it (python
+only passes on the variables a nested function needs).
+- constants are module-level, so a constant declared by one function is visible to all functions in the same
+extension module. Declaring the same constant identically in several functions is fine, but declaring it with
+different values is a compilation error (E0428).
+- the mechanism is *only intended for immutable values*: the value is captured when the function is decorated, any
+subsequent mutation will not be reflected in rust code.
 
 ## Configuration
 

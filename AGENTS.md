@@ -122,6 +122,11 @@ Coverage must be 100% (`fail_under = 100` under `[tool.coverage.report]` in [pyp
 - **Type translation is the critical path.** Changes to [extension_types.py](src/xenoform_rs/extension_types.py) affect every user and must be accompanied by tests covering the affected type mappings.
 - **Generated Rust must compile.** When modifying the code generation in [compile.py](src/xenoform_rs/compile.py), verify the output is valid Rust — run the full test suite, which will catch this.
 - **The `Annotated` override mechanism is the escape hatch.** Do not special-case types in the core translation logic when an `Annotated` override can solve the problem instead.
+  **Constants are the one deliberate exception:** a constant's rust type is given in its entry
+  (`constants=["BIG: u64"]`), and annotations on python variables are never read. An annotation lives in the declaring
+  module's `__annotations__`, not on the value, so it can't be found for an imported constant, and falling back to the
+  default type changes the width silently. Don't reintroduce an annotation lookup for constants. See the 2026-10-12
+  "`rust_constant`" and 2026-10-13 "constants by name" entries in [JOURNAL.md](JOURNAL.md).
 - **Only the three latest Python minor versions are supported** (currently 3.13, 3.14, 3.15). When a new minor version is released, drop the oldest and add the new one in a single PR. That PR must keep `requires-python`, the classifiers in [pyproject.toml](pyproject.toml), the CI matrix in [lint-test.yml](.github/workflows/lint-test.yml), pyo3's `abi3-pyXY` feature in [rustmodule.py](src/xenoform_rs/rustmodule.py) and the matrix listed under [QA Rules](#qa-rules) in step. Code may use any language or stdlib feature available in the oldest supported version, and compatibility shims for dropped versions should be removed.
 - **Free-threaded support must be preserved.** The library builds GIL-free extension modules when running under free-threaded Python (`3.14t`). Changes affecting the pyo3 bindings or module build flags must not regress free-threaded behaviour.
 - **Type annotations required.** All function signatures need full annotations. `ty` will catch missing or incorrect ones.
@@ -170,6 +175,7 @@ src/
     test_compound_types.py
     test_compound_type_error.py
     test_config.py
+    test_constants.py
     test_container_types.py
     test_edition_conflict.py
     test_edition_invalid.py

@@ -1,5 +1,6 @@
 import inspect
 import logging
+import math
 import re
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import numpy as np
 from itrx import Itr
 
 from xenoform_rs.config import get_config
@@ -51,7 +53,7 @@ def get_function_scope(func: Callable[..., Any]) -> tuple[str, ...]:
 
 
 def _translate_value(value: Any, rust_type: str) -> str:
-    """Translate a python default value to a rust expression of the given type, for use in the pyo3 signature"""
+    """Translate a python value to a rust expression of the given type"""
     if value is None:
         return "None"
     if rust_type.startswith("Option<") and rust_type.endswith(">"):
@@ -62,8 +64,24 @@ def _translate_value(value: Any, rust_type: str) -> str:
         case str():
             literal = '"{}"'.format(value.replace("\\", "\\\\").replace('"', '\\"'))
             return f"{literal}.to_string()" if rust_type == "String" else literal
+        # python renders these as nan/inf, which aren't rust literals
+        case float() | np.floating() if math.isnan(value):
+            return f"{rust_type}::NAN"
+        case float() | np.floating() if math.isinf(value):
+            return f"{rust_type}::{'INFINITY' if value > 0 else 'NEG_INFINITY'}"
         case _:
             return str(value)
+
+
+def translate_constant(name: str, value: Any, rust_type: str | None = None) -> str:
+    """
+    Translate a python value to a rust const item. Without an explicit rust type, the type is translated from the
+    value's type
+    """
+    if rust_type is None:
+        # the default mapping, String, can't be constructed in a const context
+        rust_type = "&str" if isinstance(value, str) else str(translate_type(type(value)))
+    return f"const {name}: {rust_type} = {_translate_value(value, rust_type)};"
 
 
 def translate_function_signature(func: Callable[..., Any], *, py: bool) -> tuple[str, list[str]]:

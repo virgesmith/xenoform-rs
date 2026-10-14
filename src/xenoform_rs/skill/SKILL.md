@@ -84,6 +84,7 @@ exception.
 | `profile` | `dict[str, str] \| None` | `None` | Overrides to the release Cargo profile, e.g. `{"strip": "symbols"}`. |
 | `edition` | `str` | `"2024"` | The Rust edition. |
 | `help` | `str \| None` | `None` | Docstring for the *Python* function (since the real docstring holds Rust code). |
+| `constants` | `list[str] \| None` | `None` | Names of Python variables (local, class-body, module-level or imported) emitted as module-level `const` items with the same name, typed from the value (`int` → `i32`, `str` → `&str`). For another type write `"NAME: u64"`. An `Annotated` annotation on the Python variable is **ignored**, because it doesn't travel with an imported value. |
 
 ## Default Python → Rust type mapping
 
@@ -91,7 +92,8 @@ exception.
 |--------|------|
 | `None` | `()` |
 | `int` | `i32` |
-| `np.int32` / `np.int64` | `i32` / `i64` |
+| `np.int8` / `np.int16` / `np.int32` / `np.int64` | `i8` / `i16` / `i32` / `i64` |
+| `np.uint8` / `np.uint16` / `np.uint32` / `np.uint64` | `u8` / `u16` / `u32` / `u64` |
 | `bool` | `bool` |
 | `float` | `f64` |
 | `np.float32` / `np.float64` | `f32` / `f64` |

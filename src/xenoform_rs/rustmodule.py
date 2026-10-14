@@ -46,6 +46,8 @@ use pyo3::prelude::*;
     #[pymodule_export]
     const __checksum__: &str = "__HASH__";
 
+    {constants}
+
     {function_definitions}
 }}
 """
@@ -104,6 +106,7 @@ class ModuleSpec:
     profile: dict[str, str] = field(default_factory=dict[str, str])
     edition: str | None = None  # will default to "2024"
     modules: set[Path] = field(default_factory=set[Path])
+    constants: set[str] = field(default_factory=set[str])
 
     def add_function(
         self,
@@ -114,12 +117,15 @@ class ModuleSpec:
         profile: dict[str, str] | None = None,
         edition: str | None = None,
         modules: list[Path] | None = None,
+        constants: list[str] | None = None,
     ) -> Self:
         self.functions.add(function)
         self.deps |= set(deps or [])
         self.uses |= set(uses or [])
         self.profile = _append_profile(self.profile, profile or {})
         self.modules |= set(modules or [])
+        # identical definitions from different functions collapse; conflicting ones are left for rustc to reject (E0428)
+        self.constants |= set(constants or [])
         if edition and self.edition and edition != self.edition:
             raise RustConfigError(f"Incompatible edition values: {edition} when {self.edition} has already been set")
         self.edition = edition or self.edition
@@ -159,6 +165,7 @@ class ModuleSpec:
             freethreaded="(gil_used = true)" if get_config().disable_ft else "(gil_used = false)",
             use_statements="\n".join(f"use {u};" for u in self.uses),
             crate_use_statements="\n".join(f"use crate::{m.stem};" for m in self.modules),
+            constants="\n".join(sorted(self.constants)),
             function_definitions=function_defs,
         )
 
