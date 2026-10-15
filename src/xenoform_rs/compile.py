@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import warnings
 from collections import ChainMap, defaultdict
 from collections.abc import Callable, Mapping
 from functools import lru_cache, wraps
@@ -13,7 +14,14 @@ from types import ModuleType
 from typing import Any
 
 from xenoform_rs.config import get_config
-from xenoform_rs.errors import AnnotationError, CompilationError, RustConfigError, RustDiagnostic, RustTypeError
+from xenoform_rs.errors import (
+    AnnotationError,
+    CompilationError,
+    RustConfigError,
+    RustDiagnostic,
+    RustTypeError,
+    RustWarning,
+)
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import (
     get_function_scope,
@@ -237,6 +245,17 @@ def _brief(rendered: str) -> str:
     return "\n".join(line for section in [head, *(s for s in rest if not is_external(s))] for line in section)
 
 
+def _warn(ext_name: str, diagnostics: list[RustDiagnostic]) -> None:
+    """Issue a RustWarning for each warning in a successful build"""
+    for d in diagnostics:
+        if d.level == "warning":
+            # attribute to the user code whose call triggered the build, not to this library
+            warnings.warn(
+                RustWarning(f"rustc warning in module '{ext_name}':\n{_brief(d.rendered)}", d),
+                skip_file_prefixes=(str(Path(__file__).parent),),
+            )
+
+
 def _stderr_errors(stderr: str) -> str:
     """Cargo's own error output, without the preceding progress lines"""
     lines = stderr.splitlines()
@@ -405,6 +424,7 @@ def _check_build_fetch_module_impl(
                 errors,
             )
 
+        _warn(ext_name, all_diagnostics)
         logger.info(f"built {extmodule_root.name}.{ext_name}.{module_name}")
 
     if not lib_path.exists():

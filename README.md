@@ -723,6 +723,23 @@ except CompilationError as e:
 Line numbers refer to the generated `src/lib.rs`. Errors that occur before rustc runs (e.g. an invalid `profile`
 or `edition` in `Cargo.toml`) are included in the exception message, but `diagnostics` will be empty.
 
+If the build succeeds but rustc reports warnings (e.g. an unused variable, or an unnecessary `mut`), each is issued as
+a `RustWarning` (a `UserWarning` subclass), shortened in the same way and attributed to the call that triggered the
+build. The `RustDiagnostic` is available as its `diagnostic` attribute. Warnings are only issued when the module is
+(re)built, not when an up-to-date module is reused. Use Python's warning filters to silence them or, e.g. in CI, to
+turn them into errors:
+
+```py
+import warnings
+from xenoform_rs import RustWarning
+
+warnings.simplefilter("error", RustWarning)
+```
+
+or in pytest config, `filterwarnings = ["error::xenoform_rs.RustWarning"]`. On the command line, Python won't import
+`xenoform_rs` to resolve `-W`/`PYTHONWARNINGS` categories, so match on the message instead:
+`PYTHONWARNINGS="error:rustc warning"`.
+
 Setting `XENOFORM_RS_VERBOSE=1` logs the steps taken, with timings, e.g.:
 
 ```txt
