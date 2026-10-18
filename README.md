@@ -703,8 +703,10 @@ In a Jupyter notebook:
 The generated module source code is written to `src/lib.rs` in a module-specific folder (e.g. `ext/my_module_ext`).
 Cargo build output is redirected to `build.log` in that folder. All modules share one cargo target directory,
 `ext/target/<abi-tag>/`, so dependencies such as pyo3 are compiled once rather than once per module; the actual
-binary will be found in its `release` subfolder. Modules built by xenoform-rs 0.1.6 or earlier have their own
-`target` subfolder (e.g. `ext/my_module_ext/target`), which is no longer used and can safely be deleted.
+binary will be found in its `release` subfolder, next to a `.checksum` file holding the hash of the sources it was
+built from. A module is rebuilt whenever that hash doesn't match its current sources, or the file is missing. Modules
+built by xenoform-rs 0.1.6 or earlier have their own `target` subfolder (e.g. `ext/my_module_ext/target`), which is no
+longer used and can safely be deleted, and no `.checksum` file, so they are rebuilt once.
 
 If the Rust code fails to compile, a `CompilationError` is raised (on first call of the function) containing
 rustc's error message. One mistake often causes several errors, so only those for which rustc suggests a fix are
@@ -746,8 +748,8 @@ Setting `XENOFORM_RS_VERBOSE=1` logs the steps taken, with timings, e.g.:
 
 ```txt
 $ uv run examples/loop.py
-08:34:22.535 INFO     registering loop_rs_ext.loop_rs.calc_balances_rust (in ext)
-08:34:22.597 INFO     module is up-to-date (d4c7165ade6f52c0aa2ef748c4d6e7c4edce201788a65e7b6e29ebde0d480e3e)
-08:34:22.597 INFO     imported compiled module loop_rs
-08:34:22.598 INFO     redirected calc_balances_rust to compiled function loop_rs._calc_balances_rust
+15:29:57.900 INFO     registering loop_rs_ext.loop_rs.calc_balances_rust (in ext)
+15:29:57.912 INFO     module is up-to-date (bee0c8a648a48f2370a22b667fc5a036a3beafef4abc13261c894fdc605a1343)
+15:29:57.912 INFO     imported compiled module loop_rs_ext.loop_rs
+15:29:57.912 INFO     redirected calc_balances_rust to compiled function loop_rs_ext.loop_rs._calc_balances_rust
 ```

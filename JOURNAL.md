@@ -22,6 +22,66 @@ Entry template:
 
 ---
 
+## 2026-10-18 — Cheaper up-to-date check: a checksum sidecar file (#13)
+
+**Why** — To decide whether a module was up to date, `_get_module_checksum` started a Python subprocess, loaded the
+extension in it and printed `__checksum__`. It had to be a subprocess, because a loaded extension can't be unloaded or
+reloaded, so loading it in-process would stop a rebuild from ever being picked up. That cost about 12 ms per module
+on every import (Linux; Python starts more slowly on macOS and Windows).
+
+**What**
+- After a successful build, the hash is written to a sidecar file next to the binary,
+  `ext/target/<abi>/release/libmod.so.checksum` (`get_checksum_path(lib_path)` in utils.py). A module is up to date
+  when the library exists and the sidecar holds the current hash. `_read_checksum` replaces `_get_module_checksum`
+  and `_CHECKSUM_SCRIPT`.
+- A rebuild deletes the sidecar before writing the sources and running cargo, and writes it only once the build has
+  succeeded and the library exists.
+- `__checksum__` stays in the generated module so it can be inspected, but nothing checks it at runtime.
+- New `test_checksum.py`: a build writes the sidecar and a second check reuses the build; a missing or stale sidecar
+  rebuilds; a sidecar without its library isn't trusted; a failed build leaves no sidecar. Two tests that faked a
+  stale module now patch `_read_checksum`.
+- README and SKILL.md describe the sidecar (SKILL.md also no longer says the hash includes the ABI, which stopped
+  being true on 2026-07-16). Existing ext folders have no sidecars, so their modules are rebuilt once.
+- Measured (Linux, 3.14, warm): the check takes **~12 ms → ~5.5 µs** per module, and the existing 167 tests take
+  **2.66 s → 2.17 s**.
+
+**Design decisions**
+- *The sidecar sits next to the binary, in the per-ABI release dir, not in `module_dir` as the issue suggested.*
+  `module_dir` is shared by every interpreter, but each interpreter has its own binary. A single sidecar there would
+  make a 3.13 → 3.14t switch find a matching hash and load the wrong binary, or none. It's the trap the 2026-07-16
+  entry describes for the ABI comment in `lib.rs`.
+- *Invalidate, build, then stamp.* If the old sidecar survived a rebuild that didn't complete (the build failed, the
+  process was killed, the stamp couldn't be written), it could vouch for a binary that wasn't built from the sources
+  it names, e.g. after the sources were changed back. Deleting it first means a sidecar only ever exists for a
+  completed build. Within xenoform's own flow, the sidecar and the binary can't get out of step.
+- *The stamp is written before `_warn`*, so turning `RustWarning` into an error doesn't stop the build being
+  recorded. The build did succeed, and an up-to-date module skipping its warnings is the existing behaviour.
+- *No atomic write.* A partly written sidecar holds a truncated hash, which can't equal a full one, so the worst case
+  is a rebuild.
+- *`get_checksum_path` takes `lib_path`*, rather than the root and module name like `get_lib_path`, so the sidecar is
+  always derived from the same path that is checked and loaded.
+- *No fallback to the subprocess check when there's no sidecar.* It would keep the slow path, and its tests, around
+  forever. The cost is one rebuild of existing modules, which is cheap: cargo's dependency cache is still warm.
+- Rejected: *searching the binary's bytes for the expected hash* (the `const &str` is stored verbatim, and it took
+  ~0.04 ms with `mmap`). It keeps the binary as the only source of truth, but relies on how rustc lays out string
+  literals on every platform. Maintainer decision: stick with the sidecar.
+- Rejected: *storing the binary's size and mtime in the sidecar* to catch a binary changed outside xenoform (a manual
+  `cargo build` after hand-editing `lib.rs`, a partly restored `ext/`). Maintainer decision: hash only, since a normal
+  edit can't cause this.
+- Rejected: *checking the loaded module's `__checksum__` against the hash.* A mismatch can only come from outside
+  changes, and when it's found the module is already loaded, so it couldn't be rebuilt in-process anyway.
+
+**Follow-ups**
+- Known limitation: anything that rewrites the binary without going through xenoform-rs leaves the sidecar
+  describing the old build. That includes a manual `cargo build`, copying binaries, and building the same module with
+  an older xenoform-rs that doesn't know about sidecars. Deleting the `.checksum` file (or `ext/`) forces a rebuild.
+- `test_module_reused_when_up_to_date` is still skipped on Windows because "re-checking a loaded module rebuilds".
+  That was probably the subprocess check failing there, which would have meant every Windows import rebuilt. The
+  check no longer loads anything, so the skip can likely go, but that needs Windows CI to confirm.
+- Build locking (#13) should cover the whole read, build and stamp sequence.
+
+---
+
 ## 2026-10-18 — Share one cargo target dir across modules (#13)
 
 **Why** — Each `<module>_ext` folder had its own cargo target dir, so pyo3 and every other dependency was compiled

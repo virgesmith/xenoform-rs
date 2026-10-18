@@ -205,6 +205,11 @@ def get_lib_path(extmodule_root: Path, module_name: str) -> Path:
             raise RustConfigError(f"Unsupported platform: {sys.platform}")
 
 
+def get_checksum_path(lib_path: Path) -> Path:
+    """Get the path of the sidecar file holding the checksum of the sources the compiled library was built from"""
+    return lib_path.with_name(lib_path.name + ".checksum")
+
+
 def load_rust_module(lib_path: Path, module_name: str) -> ModuleType:
     """
     Load the compiled Rust shared library as a Python module, directly from the given path.
