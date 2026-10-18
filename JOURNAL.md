@@ -22,7 +22,7 @@ Entry template:
 
 ---
 
-## 2026-10-18 — Cheaper up-to-date check: a checksum sidecar file (#13)
+## 2026-10-18 — Cheaper up-to-date check: a checksum file per ABI (#13)
 
 **Why** — To decide whether a module was up to date, `_get_module_checksum` started a Python subprocess, loaded the
 extension in it and printed `__checksum__`. It had to be a subprocess, because a loaded extension can't be unloaded or
@@ -30,51 +30,60 @@ reloaded, so loading it in-process would stop a rebuild from ever being picked u
 on every import (Linux; Python starts more slowly on macOS and Windows).
 
 **What**
-- After a successful build, the hash is written to a sidecar file next to the binary,
-  `ext/target/<abi>/release/libmod.so.checksum` (`get_checksum_path(lib_path)` in utils.py). A module is up to date
-  when the library exists and the sidecar holds the current hash. `_read_checksum` replaces `_get_module_checksum`
-  and `_CHECKSUM_SCRIPT`.
-- A rebuild deletes the sidecar before writing the sources and running cargo, and writes it only once the build has
-  succeeded and the library exists.
+- After a successful build, the hash is written to a checksum file in the module folder, named after the interpreter
+  ABI: `ext/mod_ext/cpython_314_x86_64_linux_gnu_so.checksum` (`get_checksum_path(module_dir)` in utils.py, using
+  `python_abi_tag()`, the same name as the target dir). `_read_checksum` replaces `_get_module_checksum` and
+  `_CHECKSUM_SCRIPT`.
+- A module is up to date when the library exists, the generated `src/lib.rs` exists, and the checksum file holds the
+  current hash. Otherwise it's rebuilt.
+- A rebuild deletes the checksum file before writing the sources and running cargo, and writes it only once the build
+  has succeeded and the library exists.
 - `__checksum__` stays in the generated module so it can be inspected, but nothing checks it at runtime.
-- New `test_checksum.py`: a build writes the sidecar and a second check reuses the build; a missing or stale sidecar
-  rebuilds; a sidecar without its library isn't trusted; a failed build leaves no sidecar. Two tests that faked a
-  stale module now patch `_read_checksum`.
-- README and SKILL.md describe the sidecar (SKILL.md also no longer says the hash includes the ABI, which stopped
-  being true on 2026-07-16). Existing ext folders have no sidecars, so their modules are rebuilt once.
+- New `test_checksum.py`: a build writes the checksum and a second check reuses the build; a missing or stale checksum
+  rebuilds; another ABI's checksum is ignored; deleting the module folder or just `src/` rebuilds; a checksum without
+  its library isn't trusted; a failed build leaves no checksum. Two tests that faked a stale module now patch
+  `_read_checksum`.
+- README and SKILL.md describe the checksum files (SKILL.md also no longer says the hash includes the ABI, which
+  stopped being true on 2026-07-16). Existing ext folders have no checksum files, so their modules are rebuilt once.
 - Measured (Linux, 3.14, warm): the check takes **~12 ms → ~5.5 µs** per module, and the existing 167 tests take
   **2.66 s → 2.17 s**.
 
 **Design decisions**
-- *The sidecar sits next to the binary, in the per-ABI release dir, not in `module_dir` as the issue suggested.*
-  `module_dir` is shared by every interpreter, but each interpreter has its own binary. A single sidecar there would
-  make a 3.13 → 3.14t switch find a matching hash and load the wrong binary, or none. It's the trap the 2026-07-16
-  entry describes for the ABI comment in `lib.rs`.
-- *Invalidate, build, then stamp.* If the old sidecar survived a rebuild that didn't complete (the build failed, the
+- *In the module folder, one file per ABI.* The module folder is where a user looks for a module's generated files,
+  and deleting it then deletes the checksums, which forces a rebuild. The first version put the file next to the
+  binary in `ext/target/<abi>/release/`, where deleting the module folder left a matching checksum behind, so the
+  module loaded from an empty folder. A single `.checksum` in the module folder (the issue's suggestion) was rejected:
+  the folder is shared by every interpreter, but each has its own binary, so a 3.14 → 3.14t switch would find a
+  matching hash and load the wrong binary, or none. It's the trap the 2026-07-16 entry describes for the ABI comment
+  in `lib.rs`. Naming the file after the ABI gives both.
+- *`src/lib.rs` must exist too*, although loading doesn't need it. Diagnostics (`CompilationError`, `RustWarning`,
+  `build.log`) refer to its line numbers, and deleting just `src/` should also force a rebuild. Since the shared target
+  dir (2026-10-18), the binary no longer lives in the module folder, so without this check a deleted folder was never
+  refilled. That was true of the subprocess check as well.
+- *Invalidate, build, then stamp.* If the old checksum survived a rebuild that didn't complete (the build failed, the
   process was killed, the stamp couldn't be written), it could vouch for a binary that wasn't built from the sources
-  it names, e.g. after the sources were changed back. Deleting it first means a sidecar only ever exists for a
-  completed build. Within xenoform's own flow, the sidecar and the binary can't get out of step.
+  it names, e.g. after the sources were changed back. Deleting it first means a checksum only ever exists for a
+  completed build. Within xenoform's own flow, the checksum and the binary can't get out of step.
 - *The stamp is written before `_warn`*, so turning `RustWarning` into an error doesn't stop the build being
   recorded. The build did succeed, and an up-to-date module skipping its warnings is the existing behaviour.
-- *No atomic write.* A partly written sidecar holds a truncated hash, which can't equal a full one, so the worst case
-  is a rebuild.
-- *`get_checksum_path` takes `lib_path`*, rather than the root and module name like `get_lib_path`, so the sidecar is
-  always derived from the same path that is checked and loaded.
-- *No fallback to the subprocess check when there's no sidecar.* It would keep the slow path, and its tests, around
-  forever. The cost is one rebuild of existing modules, which is cheap: cargo's dependency cache is still warm.
+- *No atomic write.* A partly written file holds a truncated hash, which can't equal a full one, so the worst case is
+  a rebuild.
+- *No fallback to the subprocess check when there's no checksum file.* It would keep the slow path, and its tests,
+  around forever. The cost is one rebuild of existing modules, which is cheap: cargo's dependency cache is still warm.
 - Rejected: *searching the binary's bytes for the expected hash* (the `const &str` is stored verbatim, and it took
   ~0.04 ms with `mmap`). It keeps the binary as the only source of truth, but relies on how rustc lays out string
-  literals on every platform. Maintainer decision: stick with the sidecar.
-- Rejected: *storing the binary's size and mtime in the sidecar* to catch a binary changed outside xenoform (a manual
+  literals on every platform. Maintainer decision: use a checksum file.
+- Rejected: *storing the binary's size and mtime with the hash* to catch a binary changed outside xenoform (a manual
   `cargo build` after hand-editing `lib.rs`, a partly restored `ext/`). Maintainer decision: hash only, since a normal
   edit can't cause this.
 - Rejected: *checking the loaded module's `__checksum__` against the hash.* A mismatch can only come from outside
   changes, and when it's found the module is already loaded, so it couldn't be rebuilt in-process anyway.
 
 **Follow-ups**
-- Known limitation: anything that rewrites the binary without going through xenoform-rs leaves the sidecar
+- Known limitation: anything that rewrites the binary without going through xenoform-rs leaves the checksum
   describing the old build. That includes a manual `cargo build`, copying binaries, and building the same module with
-  an older xenoform-rs that doesn't know about sidecars. Deleting the `.checksum` file (or `ext/`) forces a rebuild.
+  an older xenoform-rs that doesn't know about checksum files. Deleting the checksum file (or the module folder)
+  forces a rebuild.
 - `test_module_reused_when_up_to_date` is still skipped on Windows because "re-checking a loaded module rebuilds".
   That was probably the subprocess check failing there, which would have meant every Windows import rebuilt. The
   check no longer loads anything, so the skip can likely go, but that needs Windows CI to confirm.

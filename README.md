@@ -703,10 +703,12 @@ In a Jupyter notebook:
 The generated module source code is written to `src/lib.rs` in a module-specific folder (e.g. `ext/my_module_ext`).
 Cargo build output is redirected to `build.log` in that folder. All modules share one cargo target directory,
 `ext/target/<abi-tag>/`, so dependencies such as pyo3 are compiled once rather than once per module; the actual
-binary will be found in its `release` subfolder, next to a `.checksum` file holding the hash of the sources it was
-built from. A module is rebuilt whenever that hash doesn't match its current sources, or the file is missing. Modules
-built by xenoform-rs 0.1.6 or earlier have their own `target` subfolder (e.g. `ext/my_module_ext/target`), which is no
-longer used and can safely be deleted, and no `.checksum` file, so they are rebuilt once.
+binary will be found in its `release` subfolder. The module folder also holds a `<abi-tag>.checksum` file for each
+interpreter the module has been built with, containing the hash of the sources that interpreter's binary was built
+from. A module is rebuilt whenever that hash doesn't match its current sources, or the checksum file or `src/lib.rs`
+is missing, so deleting the module folder forces a rebuild. Modules built by xenoform-rs 0.1.6 or earlier have their
+own `target` subfolder (e.g. `ext/my_module_ext/target`), which is no longer used and can safely be deleted, and no
+checksum file, so they are rebuilt once.
 
 If the Rust code fails to compile, a `CompilationError` is raised (on first call of the function) containing
 rustc's error message. One mistake often causes several errors, so only those for which rustc suggests a fix are

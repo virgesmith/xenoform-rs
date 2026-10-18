@@ -205,9 +205,12 @@ def get_lib_path(extmodule_root: Path, module_name: str) -> Path:
             raise RustConfigError(f"Unsupported platform: {sys.platform}")
 
 
-def get_checksum_path(lib_path: Path) -> Path:
-    """Get the path of the sidecar file holding the checksum of the sources the compiled library was built from"""
-    return lib_path.with_name(lib_path.name + ".checksum")
+def get_checksum_path(module_dir: Path) -> Path:
+    """Get the path of the file holding the checksum of the sources the current interpreter's binary was built from.
+
+    The module folder is shared by every interpreter but each has its own binary, so each needs its own checksum.
+    """
+    return module_dir / f"{python_abi_tag()}.checksum"
 
 
 def load_rust_module(lib_path: Path, module_name: str) -> ModuleType:

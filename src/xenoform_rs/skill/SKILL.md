@@ -15,7 +15,7 @@ xenoform-rs lets you write a type-annotated Python function, decorate it with `@
 the Rust *body* of that function in its docstring. On import, xenoform-rs translates the Python
 signature to Rust, generates a pyo3 extension crate under `ext/<module>_ext/`, compiles it with
 `cargo`, and replaces the Python function with the compiled one. A hash of the source and
-`Cargo.toml` is stored next to each binary so unchanged modules are not rebuilt; each interpreter
+`Cargo.toml` is stored in the module folder so unchanged modules are not rebuilt; each interpreter
 ABI (Python version, GIL vs free-threaded) has its own binaries and hashes, so switching
 interpreters rebuilds automatically into that interpreter's own cache subdirectory.
 
@@ -172,10 +172,11 @@ For a module `my_module.py`, generated artifacts live under `ext/my_module_ext/`
 - `src/lib.rs` — the generated Rust source; read this to see exactly what Rust code was produced
   from your Python signature.
 - `build.log` — captured `cargo build` output.
+- `<abi-tag>.checksum` — the hash of the sources that interpreter's binary was built from. Deleting
+  it, `src/lib.rs` or the whole folder forces a rebuild.
 
 The compiled shared library is in `ext/target/<abi-tag>/release/`, a cargo target directory shared by
-every module (one subdirectory per interpreter ABI), next to a `.checksum` file holding the hash of
-the sources it was built from. A `target/` folder inside `ext/my_module_ext/` is
+every module (one subdirectory per interpreter ABI). A `target/` folder inside `ext/my_module_ext/` is
 left over from xenoform-rs 0.1.6 or earlier and can be deleted.
 
 Set `XENOFORM_RS_VERBOSE=1` to see each step (registering, hash check, import, redirect) with
