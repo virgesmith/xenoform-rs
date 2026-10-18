@@ -84,7 +84,7 @@ def test_module_reused_when_up_to_date() -> None:
 
 def test_compiled_lib_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        compile_mod, "get_lib_path", lambda _module_dir, module_name: Path("/nonexistent") / f"lib{module_name}.so"
+        compile_mod, "get_lib_path", lambda _extmodule_root, module_name: Path("/nonexistent") / f"lib{module_name}.so"
     )
 
     @rust(py=False, module_name="lib_missing_mod")

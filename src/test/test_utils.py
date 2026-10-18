@@ -40,18 +40,18 @@ def test_rustfmt_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_lib_path_platforms(monkeypatch: pytest.MonkeyPatch) -> None:
-    module_dir = Path("/some/module")
-    release = module_dir / "target" / utils.python_abi_tag() / "release"
+    extmodule_root = Path("/some/ext")
+    release = extmodule_root / "target" / utils.python_abi_tag() / "release"
 
     monkeypatch.setattr(sys, "platform", "darwin")
-    assert utils.get_lib_path(module_dir, "mod") == release / "libmod.dylib"
+    assert utils.get_lib_path(extmodule_root, "mod") == release / "libmod.dylib"
 
     monkeypatch.setattr(sys, "platform", "win32")
-    assert utils.get_lib_path(module_dir, "mod") == release / "mod.dll"
+    assert utils.get_lib_path(extmodule_root, "mod") == release / "mod.dll"
 
     monkeypatch.setattr(sys, "platform", "sunos5")
     with pytest.raises(RustConfigError):
-        utils.get_lib_path(module_dir, "mod")
+        utils.get_lib_path(extmodule_root, "mod")
 
 
 def test_load_rust_module_invalid_lib(tmp_path: Path) -> None:

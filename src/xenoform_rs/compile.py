@@ -118,7 +118,7 @@ _RUST_KEYWORDS = frozenset(
 )
 
 
-def _get_cargo_env(module_dir: Path) -> dict[str, str]:
+def _get_cargo_env() -> dict[str, str]:
     # Environment variables for linking, especially for macOS.
     # - `undefined dynamic_lookup` is crucial for PyO3 on macOS when building `cdylib`.
     # - `rpath $ORIGIN` (Linux) helps the loader find dependent libraries if any, relative to the executable.
@@ -126,12 +126,12 @@ def _get_cargo_env(module_dir: Path) -> dict[str, str]:
     # Note: For Windows, this might not be needed or might need different flags.
     # Best to run with default first and add if issues.
     cargo_env = os.environ.copy()
-    # Build into an ABI-specific target dir and pin pyo3 to the running interpreter. Together these ensure a
+    # Build into the shared, ABI-specific target dir and pin pyo3 to the running interpreter. Together these ensure a
     # binary is built for — and only reused by — the exact interpreter that will load it: PYO3_PYTHON stops
     # pyo3 configuring against an unrelated `python` on PATH, and the per-ABI target dir stops a GIL->free-threaded
     # switch (which keeps the same venv path, so cargo's fingerprint is unchanged) reusing a stale build.
     # absolute: cargo runs with cwd=module_dir, so a relative CARGO_TARGET_DIR would resolve against that
-    cargo_env["CARGO_TARGET_DIR"] = str(get_target_dir(module_dir).resolve())
+    cargo_env["CARGO_TARGET_DIR"] = str(get_target_dir(extmodule_root).resolve())
     cargo_env["PYO3_PYTHON"] = sys.executable
     match sys.platform:
         case "darwin":  # pragma: no cover - platform-specific
@@ -353,7 +353,7 @@ def _check_build_fetch_module_impl(
 
     module, code, hashval = module_spec.make_source(module_name)
 
-    lib_path = get_lib_path(module_dir, module_name)
+    lib_path = get_lib_path(extmodule_root, module_name)
 
     # if a built module already exists, and matches the hash of the source code, just use it
     module_checksum = _get_module_checksum(lib_path, module_name)
@@ -401,7 +401,7 @@ def _check_build_fetch_module_impl(
             # rustc emits UTF-8 regardless of platform; the locale default (e.g. cp1252 on Windows) could fail to decode
             encoding="utf-8",
             errors="replace",
-            env=_get_cargo_env(module_dir),
+            env=_get_cargo_env(),
             timeout=300,
         )
         all_diagnostics = _parse_cargo_messages(compile_result.stdout)

@@ -175,20 +175,24 @@ def python_abi_tag() -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", python_abi()).strip("_")
 
 
-def get_target_dir(module_dir: Path) -> Path:
-    """Cargo target directory for the current interpreter.
+def get_target_dir(extmodule_root: Path) -> Path:
+    """Cargo target directory for the current interpreter, shared by every module under `extmodule_root`.
+
+    Sharing means dependencies (pyo3 especially) are compiled once rather than once per module; cargo keys each
+    dependency build on its version, features and profile, so modules that differ in those still get separate builds.
+    Package names (and so the built libraries) can't collide as each module's folder is named after its package.
 
     Each Python ABI gets its own subdirectory so switching interpreter (e.g. GIL -> free-threaded, which
     keeps the same venv path) can never reuse another ABI's cached pyo3 build — cargo has no fingerprint
     input that changes when only the interpreter behind a stable venv path changes, so without isolation
     it would relink a stale, ABI-mismatched binary (SystemError: init function returned uninitialized object).
     """
-    return module_dir / "target" / python_abi_tag()
+    return extmodule_root / "target" / python_abi_tag()
 
 
-def get_lib_path(module_dir: Path, module_name: str) -> Path:
+def get_lib_path(extmodule_root: Path, module_name: str) -> Path:
     """Get the expected path of the compiled shared library for the current platform"""
-    release_dir = get_target_dir(module_dir) / "release"
+    release_dir = get_target_dir(extmodule_root) / "release"
     match sys.platform:
         case "linux":
             return release_dir / f"lib{module_name}.so"
