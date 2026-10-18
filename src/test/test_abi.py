@@ -34,12 +34,12 @@ def test_python_abi_tag_is_filesystem_safe() -> None:
 
 
 def test_target_dir_isolates_by_abi(monkeypatch: pytest.MonkeyPatch) -> None:
-    module_dir = utils.Path("/some/module")
-    default = utils.get_target_dir(module_dir)
-    assert default == module_dir / "target" / utils.python_abi_tag()
+    extmodule_root = utils.Path("/some/ext")
+    default = utils.get_target_dir(extmodule_root)
+    assert default == extmodule_root / "target" / utils.python_abi_tag()
 
     monkeypatch.setattr(utils, "python_abi", lambda: ".cpython-999t-other.so")
-    assert utils.get_target_dir(module_dir) != default
+    assert utils.get_target_dir(extmodule_root) != default
 
 
 def test_source_is_abi_independent() -> None:

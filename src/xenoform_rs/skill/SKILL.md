@@ -172,7 +172,10 @@ For a module `my_module.py`, generated artifacts live under `ext/my_module_ext/`
 - `src/lib.rs` — the generated Rust source; read this to see exactly what Rust code was produced
   from your Python signature.
 - `build.log` — captured `cargo build` output.
-- `target/<abi-tag>/release/` — the compiled shared library, one subdirectory per interpreter ABI.
+
+The compiled shared library is in `ext/target/<abi-tag>/release/`, a cargo target directory shared by
+every module (one subdirectory per interpreter ABI). A `target/` folder inside `ext/my_module_ext/` is
+left over from xenoform-rs 0.1.6 or earlier and can be deleted.
 
 Set `XENOFORM_RS_VERBOSE=1` to see each step (registering, hash check, import, redirect) with
 timings on stderr.

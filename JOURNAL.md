@@ -22,6 +22,55 @@ Entry template:
 
 ---
 
+## 2026-10-18 — Share one cargo target dir across modules (#13)
+
+**Why** — Each `<module>_ext` folder had its own cargo target dir, so pyo3 and every other dependency was compiled
+again for each module: a cold compile per module and hundreds of MB of duplicate artifacts. #13 rated this the most
+valuable item, and the 2026-07-10 ABI entry left it as a follow-up.
+
+**What**
+- `get_target_dir(extmodule_root)` returns `extmodule_root/target/<abi-tag>/`, and `get_lib_path(extmodule_root,
+  module_name)` looks for the library there. Each module folder keeps its own `Cargo.toml`, `Cargo.lock`, `src/` and
+  `build.log`, and cargo still runs in it.
+- `_get_cargo_env` no longer needs the module dir.
+- New `test_target_dir.py`: two modules build into the shared `release/` dir, and neither gets a `target/` of its
+  own. Existing tests are updated for the new signatures.
+- README and SKILL.md describe the new layout, and say that old per-module `target/` folders can be deleted.
+- Measured (cold run of the full test suite, Linux, 3.14, 35 modules): **225 s → 27 s**, and `ext/` **2.1 GB → 146 MB**.
+- Separately, dev tooling is bumped: the pre-commit hooks (uv 0.13.1, ruff v0.17.1, ty v0.0.89) and the dev
+  dependencies in `uv.lock`.
+
+**Design decisions**
+- *Pointing several crates at one target dir is safe.* Cargo supports it: each dependency build is keyed by a hash of
+  its version, features, profile and `RUSTFLAGS`. Modules with different `profile=` overrides or crate features get
+  separate copies of the affected dependencies, so sharing is reduced but nothing goes wrong. Final artifacts can't
+  collide: the package name is `module_name`, and the module folder is `module_name + "_ext"`, so two folders under
+  one root always have different package names.
+- *Still one directory per ABI*, which keeps the GIL → free-threaded protection from 2026-07-10. Sharing is across
+  modules, never across interpreters.
+- *`extmodule_root/target/<abi>` rather than `extmodule_root/<abi>`* (the layout the 2026-07-10 follow-up proposed).
+  It follows cargo's naming, is obvious when browsing `ext/`, and can't collide with a module folder, since those all
+  end in `_ext`.
+- *The root is passed explicitly* to `get_target_dir`/`get_lib_path`. Rejected: reading `get_config()` inside them,
+  which would give `compile.py` two sources for the root (its import-time `extmodule_root` and the live config) that
+  could disagree. Also rejected: deriving it from `module_dir.parent`, which ties the two paths together without
+  saying so. The cost is that the first argument now means "root" rather than "module dir". Only internal code and
+  tests call these (neither is exported), and a wrong argument gives "library not found", not a stale load.
+- *Old per-module `target/` dirs aren't deleted automatically.* The library would be deleting files on the user's
+  disk without asking, Windows may lock them, and the extra code would need tests for very little gain. The docs say
+  they can be deleted.
+- *Concurrent builds are now serialised.* Cargo locks the target dir, so two processes building different modules
+  (e.g. pytest-xdist) take turns instead of building in parallel. This is safe, and it doesn't replace the #13
+  build-locking item, which is about writes to `lib.rs`/`Cargo.toml` within one module's folder.
+
+**Follow-ups**
+- The fixed 300 s build timeout now includes any wait for cargo's target-dir lock. Another #13 item makes the timeout
+  configurable.
+- `extmodule_root` is still read once, at import, in `compile.py` (a separate #13 item). Reading it at each use site
+  would be a natural small next PR.
+
+---
+
 ## 2026-10-14 — Issue rustc warnings as `RustWarning` (#32, item 1)
 
 **Why** — rustc warnings (unused variables, unnecessary `mut`, dead assignments) were parsed after every build but only

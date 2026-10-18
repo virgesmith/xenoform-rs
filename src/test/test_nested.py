@@ -18,8 +18,7 @@ def outer(x: float) -> float:
 def test_nested() -> None:
     assert outer(3.1) == 15.5
 
-    module_dir = get_config().extmodule_root / "test_nested_ext"
-    module = load_rust_module(get_lib_path(module_dir, "test_nested"), "test_nested")
+    module = load_rust_module(get_lib_path(get_config().extmodule_root, "test_nested"), "test_nested")
 
     assert module._outer_inner(2.7, 3) == pytest.approx(8.1)
 

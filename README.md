@@ -701,8 +701,10 @@ In a Jupyter notebook:
 ## Troubleshooting
 
 The generated module source code is written to `src/lib.rs` in a module-specific folder (e.g. `ext/my_module_ext`).
-Cargo build output is redirected to `build.log` in the that folder. The actual binary will be found in the
-`target/release` subfolder.
+Cargo build output is redirected to `build.log` in that folder. All modules share one cargo target directory,
+`ext/target/<abi-tag>/`, so dependencies such as pyo3 are compiled once rather than once per module; the actual
+binary will be found in its `release` subfolder. Modules built by xenoform-rs 0.1.6 or earlier have their own
+`target` subfolder (e.g. `ext/my_module_ext/target`), which is no longer used and can safely be deleted.
 
 If the Rust code fails to compile, a `CompilationError` is raised (on first call of the function) containing
 rustc's error message. One mistake often causes several errors, so only those for which rustc suggests a fix are
