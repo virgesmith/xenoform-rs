@@ -173,7 +173,7 @@ For a module `my_module.py`, generated artifacts live under `ext/my_module_ext/`
   from your Python signature.
 - `build.log` — captured `cargo build` output.
 - `<abi-tag>.checksum` — the hash of the sources that interpreter's binary was built from. Deleting
-  it, `src/lib.rs` or the whole folder forces a rebuild.
+  it (or the whole folder) forces a rebuild.
 
 The compiled shared library is in `ext/target/<abi-tag>/release/`, a cargo target directory shared by
 every module (one subdirectory per interpreter ABI). A `target/` folder inside `ext/my_module_ext/` is

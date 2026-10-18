@@ -115,16 +115,31 @@ def test_deleted_module_folder_rebuilds(cargo_runs: list[list[str]]) -> None:
     assert (_module_dir("checksum_no_folder") / "src" / "lib.rs").exists()
 
 
-def test_missing_generated_source_rebuilds(cargo_runs: list[list[str]]) -> None:
+def test_binary_and_checksum_are_enough_to_run(monkeypatch: pytest.MonkeyPatch, cargo_runs: list[list[str]]) -> None:
     spec = _spec()
-    _check_build_fetch_module_impl("checksum_no_source", spec)
-    shutil.rmtree(_module_dir("checksum_no_source") / "src")
+    _check_build_fetch_module_impl("checksum_lean", spec)
+    # e.g. a lean docker image: no generated sources, Cargo files or build log, on a read-only filesystem
+    for path in _module_dir("checksum_lean").iterdir():
+        if path != _checksum_path("checksum_lean"):
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
     cargo_runs.clear()
 
-    # the binary and a matching checksum are still there, but diagnostics would refer to a lib.rs that doesn't exist
-    _check_build_fetch_module_impl("checksum_no_source", spec)
-    assert len(cargo_runs) == 1
-    assert (_module_dir("checksum_no_source") / "src" / "lib.rs").exists()
+    real_open = Path.open
+
+    def read_only(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError("read-only filesystem")
+
+    def open_for_reading(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+        if set(mode) & set("wax+"):
+            read_only()
+        return real_open(path, mode, *args, **kwargs)
+
+    for method in ("mkdir", "write_text", "write_bytes", "unlink"):
+        monkeypatch.setattr(Path, method, read_only)
+    monkeypatch.setattr(Path, "open", open_for_reading)
+
+    _check_build_fetch_module_impl("checksum_lean", spec)
+    assert cargo_runs == []
 
 
 def test_checksum_without_library_rebuilds(

@@ -34,14 +34,15 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
   ABI: `ext/mod_ext/cpython_314_x86_64_linux_gnu_so.checksum` (`get_checksum_path(module_dir)` in utils.py, using
   `python_abi_tag()`, the same name as the target dir). `_read_checksum` replaces `_get_module_checksum` and
   `_CHECKSUM_SCRIPT`.
-- A module is up to date when the library exists, the generated `src/lib.rs` exists, and the checksum file holds the
-  current hash. Otherwise it's rebuilt.
+- A module is up to date when the library exists and the checksum file holds the current hash. Otherwise it's
+  rebuilt. The module folder is only created when building, so an up-to-date module needs only its binary and
+  checksum, and writes nothing (e.g. a lean docker image on a read-only filesystem).
 - A rebuild deletes the checksum file before writing the sources and running cargo, and writes it only once the build
   has succeeded and the library exists.
 - `__checksum__` stays in the generated module so it can be inspected, but nothing checks it at runtime.
 - New `test_checksum.py`: a build writes the checksum and a second check reuses the build; a missing or stale checksum
-  rebuilds; another ABI's checksum is ignored; deleting the module folder or just `src/` rebuilds; a checksum without
-  its library isn't trusted; a failed build leaves no checksum. Two tests that faked a stale module now patch
+  rebuilds; another ABI's checksum is ignored; deleting the module folder rebuilds; the binary and checksum alone are
+  enough to run, with every write blocked; a checksum without its library isn't trusted; a failed build leaves no checksum. Two tests that faked a stale module now patch
   `_read_checksum`.
 - README and SKILL.md describe the checksum files (SKILL.md also no longer says the hash includes the ABI, which
   stopped being true on 2026-07-16). Existing ext folders have no checksum files, so their modules are rebuilt once.
@@ -56,10 +57,12 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
   the folder is shared by every interpreter, but each has its own binary, so a 3.14 → 3.14t switch would find a
   matching hash and load the wrong binary, or none. It's the trap the 2026-07-16 entry describes for the ABI comment
   in `lib.rs`. Naming the file after the ABI gives both.
-- *`src/lib.rs` must exist too*, although loading doesn't need it. Diagnostics (`CompilationError`, `RustWarning`,
-  `build.log`) refer to its line numbers, and deleting just `src/` should also force a rebuild. Since the shared target
-  dir (2026-10-18), the binary no longer lives in the module folder, so without this check a deleted folder was never
-  refilled. That was true of the subprocess check as well.
+- *Only the binary and checksum are needed to run.* Rejected: also requiring `src/lib.rs`, which was briefly added
+  so that deleting the module folder would force a rebuild (since the shared target dir, the binary no longer lives
+  there, and the subprocess check also loaded modules from an empty folder). With the checksum in the folder, deleting
+  it rebuilds anyway, and `lib.rs` isn't needed for diagnostics either, since every build writes it first. Requiring
+  it would make a lean deployment ship generated sources it never reads. For the same reason the module folder is now
+  created only when building, rather than on every check, which failed on a read-only filesystem.
 - *Invalidate, build, then stamp.* If the old checksum survived a rebuild that didn't complete (the build failed, the
   process was killed, the stamp couldn't be written), it could vouch for a binary that wasn't built from the sources
   it names, e.g. after the sources were changed back. Deleting it first means a checksum only ever exists for a

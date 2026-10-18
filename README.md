@@ -705,8 +705,9 @@ Cargo build output is redirected to `build.log` in that folder. All modules shar
 `ext/target/<abi-tag>/`, so dependencies such as pyo3 are compiled once rather than once per module; the actual
 binary will be found in its `release` subfolder. The module folder also holds a `<abi-tag>.checksum` file for each
 interpreter the module has been built with, containing the hash of the sources that interpreter's binary was built
-from. A module is rebuilt whenever that hash doesn't match its current sources, or the checksum file or `src/lib.rs`
-is missing, so deleting the module folder forces a rebuild. Modules built by xenoform-rs 0.1.6 or earlier have their
+from. A module is rebuilt whenever that hash doesn't match its current sources, or the checksum file is missing, so
+deleting the module folder forces a rebuild. Running an up-to-date module needs only its binary and checksum file,
+and writes nothing. Modules built by xenoform-rs 0.1.6 or earlier have their
 own `target` subfolder (e.g. `ext/my_module_ext/target`), which is no longer used and can safely be deleted, and no
 checksum file, so they are rebuilt once.
 

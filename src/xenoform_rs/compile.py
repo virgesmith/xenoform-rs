@@ -322,27 +322,23 @@ def _check_build_fetch_module_impl(
     ext_name = module_name + "_ext"
 
     module_dir = extmodule_root / ext_name
-    module_dir.mkdir(exist_ok=True, parents=True)
 
     if str(extmodule_root) not in sys.path:
         sys.path.append(str(extmodule_root))
 
     module, code, hashval = module_spec.make_source(module_name)
 
-    src_dir = module_dir / "src"
     lib_path = get_lib_path(extmodule_root, module_name)
     checksum_path = get_checksum_path(module_dir)
 
-    # if a built module already exists, and matches the hash of the source code, just use it. The generated source
-    # isn't needed to load it, but is required too: diagnostics refer to its line numbers, and deleting the module
-    # folder should force a rebuild
-    built = lib_path.exists() and (src_dir / "lib.rs").exists()
-    module_checksum = _read_checksum(checksum_path) if built else None
+    # if a built module already exists, and matches the hash of the source code, just use it. Nothing else is read or
+    # written, so the binary and its checksum alone are enough to run (e.g. in a lean docker image)
+    module_checksum = _read_checksum(checksum_path) if lib_path.exists() else None
 
     # assume exists and up-to-date
     exists, outdated = True, False
     if module_checksum is None:
-        logger.info(f"module {extmodule_root.name}.{ext_name}.{module_name} not found or incomplete")
+        logger.info(f"module {extmodule_root.name}.{ext_name}.{module_name} not found or has no checksum")
         exists = False
     elif module_checksum != hashval:
         logger.info(f"module is outdated ({hashval})")
@@ -358,7 +354,8 @@ def _check_build_fetch_module_impl(
         checksum_path.unlink(missing_ok=True)
 
         # save the code with the hash embedded
-        src_dir.mkdir(exist_ok=True)
+        src_dir = module_dir / "src"
+        src_dir.mkdir(exist_ok=True, parents=True)
         with (src_dir / "lib.rs").open("w") as fd:
             # can't use format as its full of { }
             fd.write(code.replace("__HASH__", str(hashval)))
