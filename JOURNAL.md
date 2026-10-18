@@ -42,12 +42,21 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
 - `__checksum__` stays in the generated module so it can be inspected, but nothing checks it at runtime.
 - New `test_checksum.py`: a build writes the checksum and a second check reuses the build; a missing or stale checksum
   rebuilds; another ABI's checksum is ignored; deleting the module folder rebuilds; the binary and checksum alone are
-  enough to run, with every write blocked; a checksum without its library isn't trusted; a failed build leaves no checksum. Two tests that faked a stale module now patch
+  enough to run, with every write and subprocess blocked; `lib.rs` is still formatted; the hash is the same under
+  different `PYTHONHASHSEED`s; a checksum without its library isn't trusted; a failed build leaves no checksum. Two tests that faked a stale module now patch
   `_read_checksum`.
 - README and SKILL.md describe the checksum files (SKILL.md also no longer says the hash includes the ABI, which
   stopped being true on 2026-07-16). Existing ext folders have no checksum files, so their modules are rebuilt once.
-- Measured (Linux, 3.14, warm): the check takes **~12 ms → ~5.5 µs** per module, and the existing 167 tests take
-  **2.66 s → 2.17 s**.
+- The hash is now taken over the *unformatted* generated source. rustfmt runs only when `lib.rs` is written, during
+  a rebuild, so an up-to-date module starts no subprocesses at all.
+- `make_source` sorts `deps`, `uses` and `modules`. They are sets, and their order changed between processes (string
+  hashing is randomised), so modules with two or more of them could rebuild for no reason. This was already true on
+  main for `deps` (e.g. `monte_carlo`'s three crates gave different hashes under different `PYTHONHASHSEED`s) and
+  `modules`. rustfmt's import sorting had been hiding it for `uses`, which hashing the unformatted source exposed.
+- Measured (Linux, 3.14, warm): checking a module went from ~12 ms (the subprocess) plus ~11 ms (rustfmt) to ~30 µs
+  (generating the source and reading the checksum), and the existing 167 tests take **2.66 s → 1.81 s**. A read-only
+  copy of `loop.py` with only its binary and checksum, and no cargo or rustfmt, ran with a stub `rustc` (see
+  follow-ups).
 
 **Design decisions**
 - *In the module folder, one file per ABI.* The module folder is where a user looks for a module's generated files,
@@ -73,6 +82,9 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
   a rebuild.
 - *No fallback to the subprocess check when there's no checksum file.* It would keep the slow path, and its tests,
   around forever. The cost is one rebuild of existing modules, which is cheap: cargo's dependency cache is still warm.
+- *Hash before formatting.* Formatting doesn't change what the code does, so the hash is equally valid, and it no
+  longer depends on whether (or which version of) rustfmt is installed. Before, a deployment without rustfmt saw a
+  different hash and tried to rebuild, and a rustfmt upgrade that changed its output rebuilt every module.
 - Rejected: *searching the binary's bytes for the expected hash* (the `const &str` is stored verbatim, and it took
   ~0.04 ms with `mmap`). It keeps the binary as the only source of truth, but relies on how rustc lays out string
   literals on every platform. Maintainer decision: use a checksum file.
@@ -91,6 +103,10 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
   That was probably the subprocess check failing there, which would have meant every Windows import rebuilt. The
   check no longer loads anything, so the skip can likely go, but that needs Windows CI to confirm.
 - Build locking (#13) should cover the whole read, build and stamp sequence.
+- A lean deployment (e.g. a docker image without a rust toolchain) still fails at `import xenoform_rs`, which runs
+  `rustc --version`. The #13 "lazy rustc check" item fixes that. A "prebuilt only" mode that raises instead of trying
+  to build a stale module belongs with the AOT build command item.
+- `XenoformRsConfig.rustfmt` is never read.
 
 ---
 

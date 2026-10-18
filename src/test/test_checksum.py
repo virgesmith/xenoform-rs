@@ -1,5 +1,7 @@
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -11,7 +13,7 @@ from xenoform_rs import compile as compile_mod
 from xenoform_rs.compile import _check_build_fetch_module_impl
 from xenoform_rs.config import get_config
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
-from xenoform_rs.utils import get_checksum_path, python_abi_tag
+from xenoform_rs.utils import get_checksum_path, python_abi_tag, rustfmt
 
 
 def _spec(body: str = "Ok(42)") -> ModuleSpec:
@@ -115,14 +117,14 @@ def test_deleted_module_folder_rebuilds(cargo_runs: list[list[str]]) -> None:
     assert (_module_dir("checksum_no_folder") / "src" / "lib.rs").exists()
 
 
-def test_binary_and_checksum_are_enough_to_run(monkeypatch: pytest.MonkeyPatch, cargo_runs: list[list[str]]) -> None:
+def test_binary_and_checksum_are_enough_to_run(monkeypatch: pytest.MonkeyPatch) -> None:
     spec = _spec()
     _check_build_fetch_module_impl("checksum_lean", spec)
-    # e.g. a lean docker image: no generated sources, Cargo files or build log, on a read-only filesystem
+    # e.g. a lean docker image: no generated sources, Cargo files or build log, no rust toolchain (so no subprocesses:
+    # neither cargo nor rustfmt), on a read-only filesystem
     for path in _module_dir("checksum_lean").iterdir():
         if path != _checksum_path("checksum_lean"):
             shutil.rmtree(path) if path.is_dir() else path.unlink()
-    cargo_runs.clear()
 
     real_open = Path.open
 
@@ -134,12 +136,23 @@ def test_binary_and_checksum_are_enough_to_run(monkeypatch: pytest.MonkeyPatch, 
             read_only()
         return real_open(path, mode, *args, **kwargs)
 
+    def not_installed(*_args: object, **_kwargs: object) -> None:
+        raise FileNotFoundError("no rust toolchain")
+
     for method in ("mkdir", "write_text", "write_bytes", "unlink"):
         monkeypatch.setattr(Path, method, read_only)
     monkeypatch.setattr(Path, "open", open_for_reading)
+    monkeypatch.setattr(subprocess, "run", not_installed)
 
     _check_build_fetch_module_impl("checksum_lean", spec)
-    assert cargo_runs == []
+
+
+def test_generated_source_is_still_formatted() -> None:
+    _checksum_path("checksum_formatted").unlink(missing_ok=True)
+    _check_build_fetch_module_impl("checksum_formatted", _spec())
+
+    lib_rs = (_module_dir("checksum_formatted") / "src" / "lib.rs").read_text(encoding="utf-8")
+    assert rustfmt(lib_rs) == lib_rs
 
 
 def test_checksum_without_library_rebuilds(
@@ -166,3 +179,39 @@ def test_failed_build_leaves_no_checksum() -> None:
     with pytest.raises(CompilationError):
         _check_build_fetch_module_impl("checksum_failed", _spec("Ok(not_defined)"))
     assert not _checksum_path("checksum_failed").exists()
+
+
+_HASH_SCRIPT = """
+import sys
+from pathlib import Path
+from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
+function = FunctionSpec(name="f", py=False, body="() -> PyResult<i32> {Ok(1)}", arg_annotations="", scope=())
+spec = ModuleSpec().add_function(
+    function,
+    deps=[f'dep{i} = "1"' for i in range(8)],
+    uses=[f"std::collections::Type{i}" for i in range(8)],
+    modules=[Path(p) for p in sys.argv[1:]],
+)
+print(spec.make_source("m")[2])
+"""
+
+
+def test_hash_is_the_same_in_every_process(tmp_path: Path) -> None:
+    modules = []
+    for i in range(8):
+        module = tmp_path / f"mod{i}.rs"
+        module.write_text(f"pub fn f{i}() {{}}", encoding="utf-8")
+        modules.append(str(module))
+
+    # deps, uses and modules are held in sets, whose order changes with python's per-process string hashing
+    hashes = {
+        subprocess.run(
+            [sys.executable, "-c", _HASH_SCRIPT, *modules],
+            env=os.environ | {"PYTHONHASHSEED": str(seed)},
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        for seed in range(3)
+    }
+    assert len(hashes) == 1

@@ -29,6 +29,7 @@ from xenoform_rs.utils import (
     get_lib_path,
     get_target_dir,
     load_rust_module,
+    rustfmt,
     translate_constant,
     translate_function_signature,
 )
@@ -358,7 +359,7 @@ def _check_build_fetch_module_impl(
         src_dir.mkdir(exist_ok=True, parents=True)
         with (src_dir / "lib.rs").open("w") as fd:
             # can't use format as its full of { }
-            fd.write(code.replace("__HASH__", str(hashval)))
+            fd.write(rustfmt(code.replace("__HASH__", str(hashval))))
         logger.info(f"wrote {module_dir}/lib.rs")
 
         for file in module_spec.modules:
