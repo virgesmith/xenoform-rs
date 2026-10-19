@@ -22,6 +22,45 @@ Entry template:
 
 ---
 
+## 2026-10-19 — Atomic writes of build files (#13) (#37)
+
+**Why** — #13's "Lock concurrent builds". When two processes (pytest-xdist, multiprocessing) or two free-threaded
+threads build the same module at once, each truncates and rewrites `lib.rs` and `Cargo.toml`. One's cargo can read a
+file the other has just truncated, and fail with a confusing compile error. Cargo already serialises the builds
+themselves with its lock on the shared target dir, so the files cargo reads were the gap.
+
+**What**
+- `utils.atomic_write(path, text)`: writes to a temp file beside `path`, then `Path.replace`s it into place, so a
+  reader sees the old file or the new one, never part of one. The temp file is removed if the write or replace fails.
+- Used for `lib.rs`, `Cargo.toml`, the copied `modules` files and the checksum file. Writes are now always UTF-8: the
+  previous `open("w")` used the locale encoding (cp1252 on Windows).
+
+**Design decisions**
+- *Atomic writes rather than a lock.* When concurrent builds have the same source, which is the realistic case, both
+  write identical content, so it's enough that no reader sees a partial file. That needs no new dependency (e.g.
+  `filelock`), no platform-specific `fcntl`/`msvcrt` code, and no separate handling of threads (POSIX record locks are
+  per process). Rejected for now: the full lock. It's only needed for concurrent builds of *different* sources of the
+  same module, which is rare.
+- *A temp name unique to the process and thread, opened normally.* Rejected: `tempfile.NamedTemporaryFile`. It creates
+  files with mode `0600`, which `replace` keeps, so build files would no longer follow the umask. Also rejected:
+  `fsync` before the replace. It makes the file durable across power loss, which atomicity for concurrent readers
+  doesn't need, and an interrupted build is redone anyway because the checksum is written last.
+- *The checksum goes through the same helper.* A torn read of it would only cause an unnecessary rebuild, but using
+  the helper costs nothing.
+- *Copied modules are read as UTF-8 text* so they can use the same helper. Rust source must be UTF-8, so nothing valid
+  is lost.
+
+**Follow-ups**
+- The full lock, if concurrent builds of different sources ever matter. Without it the last replace wins, and one
+  process's checksum can end up next to a binary built from the other's source.
+- Both processes still run cargo. The second run normally finds nothing to do, but a replace updates the file's
+  mtime, so cargo may rebuild. On Windows that fails if another process has the DLL loaded. Skipping the write when
+  the content is unchanged would avoid it.
+- `test_concurrent_build` rarely failed before this change because the race window is narrow. It's there to check
+  that concurrent replaces work on every platform.
+
+---
+
 ## 2026-10-19 — Configurable build timeout; remove dead config and `sys.path` entry (#13) (#36)
 
 **Why** — Three small #13 items. The 300 s `cargo build` timeout was hardcoded, and heavy dependency trees (polars,
