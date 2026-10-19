@@ -117,13 +117,13 @@ def test_deleted_module_folder_rebuilds(cargo_runs: list[list[str]]) -> None:
     assert (_module_dir("checksum_no_folder") / "src" / "lib.rs").exists()
 
 
-def test_binary_and_checksum_are_enough_to_run(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_up_to_date_check_only_reads_binary_and_checksum(monkeypatch: pytest.MonkeyPatch) -> None:
     spec = _spec()
-    _check_build_fetch_module_impl("checksum_lean", spec)
-    # e.g. a lean docker image: no generated sources, Cargo files or build log, no rust toolchain (so no subprocesses:
-    # neither cargo nor rustfmt), on a read-only filesystem
-    for path in _module_dir("checksum_lean").iterdir():
-        if path != _checksum_path("checksum_lean"):
+    _check_build_fetch_module_impl("checksum_read_only", spec)
+    # the check needs no generated sources, Cargo files or build log, starts no subprocesses (neither cargo nor
+    # rustfmt), and writes nothing
+    for path in _module_dir("checksum_read_only").iterdir():
+        if path != _checksum_path("checksum_read_only"):
             shutil.rmtree(path) if path.is_dir() else path.unlink()
 
     real_open = Path.open
@@ -144,7 +144,7 @@ def test_binary_and_checksum_are_enough_to_run(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(Path, "open", open_for_reading)
     monkeypatch.setattr(subprocess, "run", not_installed)
 
-    _check_build_fetch_module_impl("checksum_lean", spec)
+    _check_build_fetch_module_impl("checksum_read_only", spec)
 
 
 def test_generated_source_is_still_formatted() -> None:

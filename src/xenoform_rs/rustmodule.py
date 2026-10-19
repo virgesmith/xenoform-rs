@@ -171,7 +171,7 @@ class ModuleSpec:
         )
 
         # hashed unformatted: rustfmt runs only when writing lib.rs, so checking a module doesn't need it, and the hash
-        # doesn't depend on whether (or which version of) rustfmt is installed, e.g. in a lean docker image
+        # doesn't depend on whether (or which version of) rustfmt is installed, e.g. rustup's minimal profile has none
         hash = sha256(module.encode("utf-8") + code.encode("utf-8"))
         for m in sorted(self.modules):
             hash.update(m.read_bytes())

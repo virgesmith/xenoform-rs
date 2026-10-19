@@ -333,7 +333,7 @@ def _check_build_fetch_module_impl(
     checksum_path = get_checksum_path(module_dir)
 
     # if a built module already exists, and matches the hash of the source code, just use it. Nothing else is read or
-    # written, so the binary and its checksum alone are enough to run (e.g. in a lean docker image)
+    # written, so a check has no side effects and needs only the binary and its checksum
     module_checksum = _read_checksum(checksum_path) if lib_path.exists() else None
 
     # assume exists and up-to-date

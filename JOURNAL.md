@@ -35,14 +35,14 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
   `python_abi_tag()`, the same name as the target dir). `_read_checksum` replaces `_get_module_checksum` and
   `_CHECKSUM_SCRIPT`.
 - A module is up to date when the library exists and the checksum file holds the current hash. Otherwise it's
-  rebuilt. The module folder is only created when building, so an up-to-date module needs only its binary and
-  checksum, and writes nothing (e.g. a lean docker image on a read-only filesystem).
+  rebuilt. The module folder is only created when building, so checking an up-to-date module reads only its binary
+  and checksum, and writes nothing.
 - A rebuild deletes the checksum file before writing the sources and running cargo, and writes it only once the build
   has succeeded and the library exists.
 - `__checksum__` stays in the generated module so it can be inspected, but nothing checks it at runtime.
 - New `test_checksum.py`: a build writes the checksum and a second check reuses the build; a missing or stale checksum
-  rebuilds; another ABI's checksum is ignored; deleting the module folder rebuilds; the binary and checksum alone are
-  enough to run, with every write and subprocess blocked; `lib.rs` is still formatted; the hash is the same under
+  rebuilds; another ABI's checksum is ignored; deleting the module folder rebuilds; an up-to-date check needs only
+  the binary and checksum, with every write and subprocess blocked; `lib.rs` is still formatted; the hash is the same under
   different `PYTHONHASHSEED`s; a checksum without its library isn't trusted; a failed build leaves no checksum. Two tests that faked a stale module now patch
   `_read_checksum`.
 - README and SKILL.md describe the checksum files (SKILL.md also no longer says the hash includes the ABI, which
@@ -54,9 +54,7 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
   main for `deps` (e.g. `monte_carlo`'s three crates gave different hashes under different `PYTHONHASHSEED`s) and
   `modules`. rustfmt's import sorting had been hiding it for `uses`, which hashing the unformatted source exposed.
 - Measured (Linux, 3.14, warm): checking a module went from ~12 ms (the subprocess) plus ~11 ms (rustfmt) to ~30 µs
-  (generating the source and reading the checksum), and the existing 167 tests take **2.66 s → 1.81 s**. A read-only
-  copy of `loop.py` with only its binary and checksum, and no cargo or rustfmt, ran with a stub `rustc` (see
-  follow-ups).
+  (generating the source and reading the checksum), and the existing 167 tests take **2.66 s → 1.81 s**.
 
 **Design decisions**
 - *In the module folder, one file per ABI.* The module folder is where a user looks for a module's generated files,
@@ -66,12 +64,17 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
   the folder is shared by every interpreter, but each has its own binary, so a 3.14 → 3.14t switch would find a
   matching hash and load the wrong binary, or none. It's the trap the 2026-07-16 entry describes for the ABI comment
   in `lib.rs`. Naming the file after the ABI gives both.
-- *Only the binary and checksum are needed to run.* Rejected: also requiring `src/lib.rs`, which was briefly added
-  so that deleting the module folder would force a rebuild (since the shared target dir, the binary no longer lives
+- *A check reads only the binary and checksum.* Rejected: also requiring `src/lib.rs`, which was briefly added so
+  that deleting the module folder would force a rebuild (since the shared target dir, the binary no longer lives
   there, and the subprocess check also loaded modules from an empty folder). With the checksum in the folder, deleting
-  it rebuilds anyway, and `lib.rs` isn't needed for diagnostics either, since every build writes it first. Requiring
-  it would make a lean deployment ship generated sources it never reads. For the same reason the module folder is now
-  created only when building, rather than on every check, which failed on a read-only filesystem.
+  it rebuilds anyway, and `lib.rs` isn't needed for diagnostics either, since every build writes it first, so
+  requiring it adds no safety and makes the check depend on a file it never reads. For the same reason the module
+  folder is now created only when building: a check should have no side effects, and creating it on every check left
+  empty folders behind.
+- An earlier draft justified this with a "lean docker image" (binary and checksum only, no rust toolchain). That was
+  dropped as a rationale: `import xenoform_rs` needs `rustc`, the binary lives in the cargo target dir among every
+  dependency's artifacts, and deploying compiled rust without a toolchain is a packaging problem (e.g. a wheel), not
+  something this check should be designed around.
 - *Invalidate, build, then stamp.* If the old checksum survived a rebuild that didn't complete (the build failed, the
   process was killed, the stamp couldn't be written), it could vouch for a binary that wasn't built from the sources
   it names, e.g. after the sources were changed back. Deleting it first means a checksum only ever exists for a
@@ -83,8 +86,9 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
 - *No fallback to the subprocess check when there's no checksum file.* It would keep the slow path, and its tests,
   around forever. The cost is one rebuild of existing modules, which is cheap: cargo's dependency cache is still warm.
 - *Hash before formatting.* Formatting doesn't change what the code does, so the hash is equally valid, and it no
-  longer depends on whether (or which version of) rustfmt is installed. Before, a deployment without rustfmt saw a
-  different hash and tried to rebuild, and a rustfmt upgrade that changed its output rebuilt every module.
+  longer depends on whether (or which version of) rustfmt is installed. An up-to-date check then starts no
+  subprocesses (rustfmt was ~11 ms of it). Before, a toolchain without rustfmt (e.g. rustup's `minimal` profile,
+  common in CI) saw a different hash, and a rustfmt upgrade that changed its output rebuilt every module.
 - Rejected: *searching the binary's bytes for the expected hash* (the `const &str` is stored verbatim, and it took
   ~0.04 ms with `mmap`). It keeps the binary as the only source of truth, but relies on how rustc lays out string
   literals on every platform. Maintainer decision: use a checksum file.
@@ -103,9 +107,9 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
   That was probably the subprocess check failing there, which would have meant every Windows import rebuilt. The
   check no longer loads anything, so the skip can likely go, but that needs Windows CI to confirm.
 - Build locking (#13) should cover the whole read, build and stamp sequence.
-- A lean deployment (e.g. a docker image without a rust toolchain) still fails at `import xenoform_rs`, which runs
-  `rustc --version`. The #13 "lazy rustc check" item fixes that. A "prebuilt only" mode that raises instead of trying
-  to build a stale module belongs with the AOT build command item.
+- Running without a rust toolchain isn't a goal: `import xenoform_rs` still runs `rustc --version`. If it's ever
+  wanted, it belongs with #13's AOT build command item, together with a "prebuilt only" mode that raises instead of
+  trying to build a stale module.
 - `XenoformRsConfig.rustfmt` is never read.
 
 ---
