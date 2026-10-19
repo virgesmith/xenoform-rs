@@ -673,7 +673,7 @@ subsequent mutation will not be reflected in rust code.
 
 ### `pyo3` version
 
-The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default - and only supported version - is currently 0.29. Using a different version is not guaranteed to work, and will probably require overrides for all argument and return types.
+The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default - and only supported version - is currently 0.29. Using a different version is not guaranteed to work, and may require overrides for all argument and return types.
 
 ### Location of Extension Modules
 
@@ -692,6 +692,10 @@ won't interfere with a host application's own logging setup.
 
 By default, if the interpreter is free-threaded, extension modules will be built without the GIL. This requires the extension code to be threadsafe. If xenoform detects an environment variable `XENOFORM_RS_DISABLE_FT`, free-threading is
 disabled.
+
+### Build Timeout
+
+The build command times out by default after 300s. This can be adjusted if necessary, due to heavy rust dependencies, by setting `XENOFORM_RS_BUILD_TIMEOUT` (in seconds, and positive). A build that times out raises a `CompilationError`.
 
 ## Notebooks
 

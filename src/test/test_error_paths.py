@@ -1,13 +1,15 @@
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 import xenoform_rs
-from xenoform_rs import AnnotationError, RustConfigError, RustTypeError, rust
+from xenoform_rs import AnnotationError, CompilationError, RustConfigError, RustTypeError, rust
 from xenoform_rs import compile as compile_mod
 from xenoform_rs.compile import _check_build_fetch_module_impl, _validate_module_name, _validate_signature
+from xenoform_rs.config import XenoformRsConfig
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 
 
@@ -94,6 +96,27 @@ def test_compiled_lib_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     # compilation is deferred until the first call
     with pytest.raises(RustConfigError):
         noop()
+
+
+def test_build_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    # force a rebuild, with a configured timeout, and a cargo that always times out
+    monkeypatch.setattr(compile_mod, "_read_checksum", lambda *_args: "0" * 64)
+    monkeypatch.setattr(compile_mod, "get_config", lambda: XenoformRsConfig(build_timeout=7))
+    real_run = subprocess.run
+
+    def time_out(args: list[str], *rest: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if args[0] == "cargo":
+            raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+        return real_run(args, *rest, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", time_out)
+    spec = ModuleSpec().add_function(
+        FunctionSpec(name="f", py=False, body="() -> PyResult<()> {Ok(())}", arg_annotations="", scope=())
+    )
+
+    # the configured value reaches cargo, and the error says how to change it
+    with pytest.raises(CompilationError, match=r"timed out after 7s.*XENOFORM_RS_BUILD_TIMEOUT"):
+        _check_build_fetch_module_impl("timeout_mod", spec)
 
 
 if __name__ == "__main__":
