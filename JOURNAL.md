@@ -22,6 +22,137 @@ Entry template:
 
 ---
 
+## 2026-10-19 — Scope: on-the-fly development, not distribution (#35)
+
+**Why** — Review of #35 found that one of its design decisions had been justified by a "lean docker image": a
+deployment with prebuilt binaries and no rust toolchain. Nobody had asked for that, it didn't work (`import
+xenoform_rs` needs `rustc`), and it was quietly pulling the design towards packaging. It raised the question of
+whether a package using xenoform-rs could ship its compiled modules in a wheel, which needed an explicit answer.
+
+**What**
+- Maintainer decision: xenoform-rs is for on-the-fly rust development: prototyping, and quick-win performance gains
+  in hot python code. It is **not** designed for shipping prebuilt binaries. That's what
+  [maturin](https://www.maturin.rs/) is for.
+- README says so in a new "What it's for" section, and SKILL.md lists distribution among the cases where `@rust`
+  isn't worth reaching for.
+- README fixes in the same area: "Change detection" said the interpreter ABI is part of the hash, which stopped being
+  true on 2026-07-16, and the checksum paragraph no longer reads like a deployment recipe.
+
+**Design decisions**
+- *Not a distribution tool.* Shipping prebuilt modules in a wheel would need a package-relative binary lookup ahead
+  of `extmodule_root`, checksums keyed by wheel tag (abi3, plus separate free-threaded builds) rather than by exact
+  interpreter, a prebuilt-only mode, a build command or backend hook, and the same xenoform-rs version at build and
+  run time (the generated source, and so the hash, depends on it). That's a second product grafted onto the first,
+  and maturin already does it properly: a real crate, a standard build backend, manylinux tooling. Rust code that
+  outgrows xenoform-rs should move to a maturin crate. The generated `src/lib.rs` and `Cargo.toml` in its module
+  folder are a starting point.
+- *A rust toolchain is required wherever the code runs*, not only where it's built. Features aren't to be justified
+  by deployments without one.
+- Rejected: *a lazy `rustc` check* (only when a build is needed, rather than at `import xenoform_rs`). Its only use
+  was running without a toolchain, which is out of scope. Failing at import is also the clearer error: it says what's
+  missing before any user code runs.
+- *#13's AOT build command.* Its stated motivation, "Docker/CI images that build once and deploy without a Rust
+  toolchain", is rejected. Its other motivation, warming the build cache before test runs, is a development
+  convenience and stays in scope if it's wanted. Its "fold the ABI into the checksum" part was done by #35's per-ABI
+  checksum files.
+- Rejected: *a "prebuilt" mode as a cheap extra.* Every piece listed above would have to be maintained and tested
+  across the CI matrix, and a half-supported distribution path invites bug reports for a use case the library isn't
+  built for.
+
+**Follow-ups**
+- Update #13: drop the deployment motivation from the AOT item.
+
+---
+
+## 2026-10-18 — Cheaper up-to-date check: a checksum file per ABI (#13)
+
+**Why** — To decide whether a module was up to date, `_get_module_checksum` started a Python subprocess, loaded the
+extension in it and printed `__checksum__`. It had to be a subprocess, because a loaded extension can't be unloaded or
+reloaded, so loading it in-process would stop a rebuild from ever being picked up. That cost about 12 ms per module
+on every import (Linux; Python starts more slowly on macOS and Windows).
+
+**What**
+- After a successful build, the hash is written to a checksum file in the module folder, named after the interpreter
+  ABI: `ext/mod_ext/cpython_314_x86_64_linux_gnu_so.checksum` (`get_checksum_path(module_dir)` in utils.py, using
+  `python_abi_tag()`, the same name as the target dir). `_read_checksum` replaces `_get_module_checksum` and
+  `_CHECKSUM_SCRIPT`.
+- A module is up to date when the library exists and the checksum file holds the current hash. Otherwise it's
+  rebuilt. The module folder is only created when building, so checking an up-to-date module reads only its binary
+  and checksum, and writes nothing.
+- A rebuild deletes the checksum file before writing the sources and running cargo, and writes it only once the build
+  has succeeded and the library exists.
+- `__checksum__` stays in the generated module so it can be inspected, but nothing checks it at runtime.
+- New `test_checksum.py`: a build writes the checksum and a second check reuses the build; a missing or stale checksum
+  rebuilds; another ABI's checksum is ignored; deleting the module folder rebuilds; an up-to-date check needs only
+  the binary and checksum, with every write and subprocess blocked; `lib.rs` is still formatted; the hash is the same under
+  different `PYTHONHASHSEED`s; a checksum without its library isn't trusted; a failed build leaves no checksum. Two tests that faked a stale module now patch
+  `_read_checksum`.
+- README and SKILL.md describe the checksum files (SKILL.md also no longer says the hash includes the ABI, which
+  stopped being true on 2026-07-16). Existing ext folders have no checksum files, so their modules are rebuilt once.
+- The hash is now taken over the *unformatted* generated source. rustfmt runs only when `lib.rs` is written, during
+  a rebuild, so an up-to-date module starts no subprocesses at all.
+- `make_source` sorts `deps`, `uses` and `modules`. They are sets, and their order changed between processes (string
+  hashing is randomised), so modules with two or more of them could rebuild for no reason. This was already true on
+  main for `deps` (e.g. `monte_carlo`'s three crates gave different hashes under different `PYTHONHASHSEED`s) and
+  `modules`. rustfmt's import sorting had been hiding it for `uses`, which hashing the unformatted source exposed.
+- Measured (Linux, 3.14, warm): checking a module went from ~12 ms (the subprocess) plus ~11 ms (rustfmt) to ~30 µs
+  (generating the source and reading the checksum), and the existing 167 tests take **2.66 s → 1.81 s**.
+
+**Design decisions**
+- *In the module folder, one file per ABI.* The module folder is where a user looks for a module's generated files,
+  and deleting it then deletes the checksums, which forces a rebuild. The first version put the file next to the
+  binary in `ext/target/<abi>/release/`, where deleting the module folder left a matching checksum behind, so the
+  module loaded from an empty folder. A single `.checksum` in the module folder (the issue's suggestion) was rejected:
+  the folder is shared by every interpreter, but each has its own binary, so a 3.14 → 3.14t switch would find a
+  matching hash and load the wrong binary, or none. It's the trap the 2026-07-16 entry describes for the ABI comment
+  in `lib.rs`. Naming the file after the ABI gives both.
+- *A check reads only the binary and checksum.* Rejected: also requiring `src/lib.rs`, which was briefly added so
+  that deleting the module folder would force a rebuild (since the shared target dir, the binary no longer lives
+  there, and the subprocess check also loaded modules from an empty folder). With the checksum in the folder, deleting
+  it rebuilds anyway, and `lib.rs` isn't needed for diagnostics either, since every build writes it first, so
+  requiring it adds no safety and makes the check depend on a file it never reads. For the same reason the module
+  folder is now created only when building: a check should have no side effects, and creating it on every check left
+  empty folders behind.
+- An earlier draft justified this with a "lean docker image" (binary and checksum only, no rust toolchain). That was
+  dropped as a rationale: `import xenoform_rs` needs `rustc`, the binary lives in the cargo target dir among every
+  dependency's artifacts, and deploying compiled rust without a toolchain is out of scope (see the 2026-10-19 scope
+  entry).
+- *Invalidate, build, then stamp.* If the old checksum survived a rebuild that didn't complete (the build failed, the
+  process was killed, the stamp couldn't be written), it could vouch for a binary that wasn't built from the sources
+  it names, e.g. after the sources were changed back. Deleting it first means a checksum only ever exists for a
+  completed build. Within xenoform's own flow, the checksum and the binary can't get out of step.
+- *The stamp is written before `_warn`*, so turning `RustWarning` into an error doesn't stop the build being
+  recorded. The build did succeed, and an up-to-date module skipping its warnings is the existing behaviour.
+- *No atomic write.* A partly written file holds a truncated hash, which can't equal a full one, so the worst case is
+  a rebuild.
+- *No fallback to the subprocess check when there's no checksum file.* It would keep the slow path, and its tests,
+  around forever. The cost is one rebuild of existing modules, which is cheap: cargo's dependency cache is still warm.
+- *Hash before formatting.* Formatting doesn't change what the code does, so the hash is equally valid, and it no
+  longer depends on whether (or which version of) rustfmt is installed. An up-to-date check then starts no
+  subprocesses (rustfmt was ~11 ms of it). Before, a toolchain without rustfmt (e.g. rustup's `minimal` profile,
+  common in CI) saw a different hash, and a rustfmt upgrade that changed its output rebuilt every module.
+- Rejected: *searching the binary's bytes for the expected hash* (the `const &str` is stored verbatim, and it took
+  ~0.04 ms with `mmap`). It keeps the binary as the only source of truth, but relies on how rustc lays out string
+  literals on every platform. Maintainer decision: use a checksum file.
+- Rejected: *storing the binary's size and mtime with the hash* to catch a binary changed outside xenoform (a manual
+  `cargo build` after hand-editing `lib.rs`, a partly restored `ext/`). Maintainer decision: hash only, since a normal
+  edit can't cause this.
+- Rejected: *checking the loaded module's `__checksum__` against the hash.* A mismatch can only come from outside
+  changes, and when it's found the module is already loaded, so it couldn't be rebuilt in-process anyway.
+
+**Follow-ups**
+- Known limitation: anything that rewrites the binary without going through xenoform-rs leaves the checksum
+  describing the old build. That includes a manual `cargo build`, copying binaries, and building the same module with
+  an older xenoform-rs that doesn't know about checksum files. Deleting the checksum file (or the module folder)
+  forces a rebuild.
+- `test_module_reused_when_up_to_date` is still skipped on Windows because "re-checking a loaded module rebuilds".
+  That was probably the subprocess check failing there, which would have meant every Windows import rebuilt. The
+  check no longer loads anything, so the skip can likely go, but that needs Windows CI to confirm.
+- Build locking (#13) should cover the whole read, build and stamp sequence.
+- `XenoformRsConfig.rustfmt` is never read.
+
+---
+
 ## 2026-10-18 — Share one cargo target dir across modules (#13)
 
 **Why** — Each `<module>_ext` folder had its own cargo target dir, so pyo3 and every other dependency was compiled

@@ -10,7 +10,7 @@ from xenoform_rs import compile as compile_mod
 @pytest.fixture(autouse=True)
 def always_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
     # warnings are only issued when cargo runs, which an up-to-date module from a previous test run would skip
-    monkeypatch.setattr(compile_mod, "_get_module_checksum", lambda *_args: "0" * 64)
+    monkeypatch.setattr(compile_mod, "_read_checksum", lambda *_args: "0" * 64)
 
 
 def test_rustc_warnings_are_issued_as_rust_warnings() -> None:

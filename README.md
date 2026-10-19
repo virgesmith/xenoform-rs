@@ -28,15 +28,25 @@ Here's what happens automatically when you import a module with `@rust`-decorate
 The Rust functions execute directly with minimal overhead.
 
 **Change detection:**
-Each module stores a hash of its source code and Cargo.toml. On import, xenoform-rs checks these hashes and
-automatically rebuilds the module if any changes are detected. The interpreter ABI (Python version, and whether the
-build is GIL-enabled or free-threaded) is part of this hash, so switching Python versions or GIL/free-threaded builds
-triggers a rebuild automatically. Each interpreter builds into its own subdirectory, so switching back and forth reuses
-each cached build rather than recompiling.
+Each module's hash covers its generated source code, its Cargo.toml and any additional rust modules. On import,
+xenoform-rs compares it with the hash recorded when the module was last built, and rebuilds the module if they differ.
+Each interpreter ABI (Python version, and whether the build is GIL-enabled or free-threaded) has its own binary and
+recorded hash, so switching Python versions or GIL/free-threaded builds triggers a build the first time, and switching
+back and forth reuses each cached build rather than recompiling.
 
 **Where files go:**
 By default, the `ext` subfolder contains binaries, generated source code, and build logs. To change this location see
 [below](#location-of-extension-modules).
+
+## What it's for
+
+xenoform-rs is for on-the-fly rust development: prototyping, and quick-win performance gains in hot Python code,
+without setting up a crate or a build. Modules are compiled on the machine that runs them, so a rust toolchain is needed
+wherever the code runs.
+
+It is **not** designed for shipping prebuilt binaries, e.g. in a wheel or a docker image without a rust toolchain.
+That's what [maturin](https://www.maturin.rs/) is for. If your rust code outgrows xenoform-rs, the generated
+`src/lib.rs` and `Cargo.toml` in its module folder are a starting point for a maturin crate.
 
 ## Features
 
@@ -703,8 +713,13 @@ In a Jupyter notebook:
 The generated module source code is written to `src/lib.rs` in a module-specific folder (e.g. `ext/my_module_ext`).
 Cargo build output is redirected to `build.log` in that folder. All modules share one cargo target directory,
 `ext/target/<abi-tag>/`, so dependencies such as pyo3 are compiled once rather than once per module; the actual
-binary will be found in its `release` subfolder. Modules built by xenoform-rs 0.1.6 or earlier have their own
-`target` subfolder (e.g. `ext/my_module_ext/target`), which is no longer used and can safely be deleted.
+binary will be found in its `release` subfolder. The module folder also holds a `<abi-tag>.checksum` file for each
+interpreter the module has been built with, containing the hash of the sources that interpreter's binary was built
+from. A module is rebuilt whenever that hash doesn't match its current sources, or the checksum file is missing, so
+deleting the module folder forces a rebuild. Checking an up-to-date module reads only its binary and checksum file,
+and writes nothing. Modules built by xenoform-rs 0.1.6 or earlier have their own `target` subfolder (e.g.
+`ext/my_module_ext/target`), which is no longer used and can safely be deleted, and no checksum file, so they are
+rebuilt once.
 
 If the Rust code fails to compile, a `CompilationError` is raised (on first call of the function) containing
 rustc's error message. One mistake often causes several errors, so only those for which rustc suggests a fix are
@@ -746,8 +761,8 @@ Setting `XENOFORM_RS_VERBOSE=1` logs the steps taken, with timings, e.g.:
 
 ```txt
 $ uv run examples/loop.py
-08:34:22.535 INFO     registering loop_rs_ext.loop_rs.calc_balances_rust (in ext)
-08:34:22.597 INFO     module is up-to-date (d4c7165ade6f52c0aa2ef748c4d6e7c4edce201788a65e7b6e29ebde0d480e3e)
-08:34:22.597 INFO     imported compiled module loop_rs
-08:34:22.598 INFO     redirected calc_balances_rust to compiled function loop_rs._calc_balances_rust
+15:29:57.900 INFO     registering loop_rs_ext.loop_rs.calc_balances_rust (in ext)
+15:29:57.912 INFO     module is up-to-date (bee0c8a648a48f2370a22b667fc5a036a3beafef4abc13261c894fdc605a1343)
+15:29:57.912 INFO     imported compiled module loop_rs_ext.loop_rs
+15:29:57.912 INFO     redirected calc_balances_rust to compiled function loop_rs_ext.loop_rs._calc_balances_rust
 ```

@@ -59,7 +59,7 @@ def test_validate_module_name() -> None:
 @pytest.mark.filterwarnings("ignore::xenoform_rs.RustWarning")
 def test_rebuild_when_outdated(monkeypatch: pytest.MonkeyPatch) -> None:
     # force a checksum mismatch so the module is considered stale and rebuilt
-    monkeypatch.setattr(compile_mod, "_get_module_checksum", lambda *_args: "0" * 64)
+    monkeypatch.setattr(compile_mod, "_read_checksum", lambda *_args: "0" * 64)
 
     @rust(py=False, module_name="outdated_mod", modules=["src/test/fibonacci.rs"])
     def plus_one(x: int) -> int:  # ty: ignore[empty-body]

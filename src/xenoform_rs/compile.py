@@ -24,10 +24,12 @@ from xenoform_rs.errors import (
 )
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import (
+    get_checksum_path,
     get_function_scope,
     get_lib_path,
     get_target_dir,
     load_rust_module,
+    rustfmt,
     translate_constant,
     translate_function_signature,
 )
@@ -143,38 +145,13 @@ def _get_cargo_env() -> dict[str, str]:
     return cargo_env
 
 
-_CHECKSUM_SCRIPT = """
-import os, sys, importlib.util
-from importlib.machinery import ExtensionFileLoader
-module_name = os.environ["_XENOFORM_MODULE_NAME"]
-module_path = os.environ["_XENOFORM_MODULE_PATH"]
-loader = ExtensionFileLoader(module_name, module_path)
-spec = importlib.util.spec_from_loader(module_name, loader)
-module = importlib.util.module_from_spec(spec)
-sys.modules[module_name] = module
-spec.loader.exec_module(module)
-print(module.__checksum__)
-"""
-
-
-# need to load module in a subprocess to check its up-to-date to avoid polluting sys.modules
-# otherwise if a rebuild is done, the module is already loaded and the changes are not picked up
-# importlib.reload doesn't work here, the old module remains in memory
-def _get_module_checksum(module_path: Path, module_name: str) -> str | None:
-    env = os.environ.copy()
-    env["_XENOFORM_MODULE_NAME"] = module_name
-    env["_XENOFORM_MODULE_PATH"] = str(module_path)
-    p = subprocess.run(
-        [sys.executable, "-c", _CHECKSUM_SCRIPT],
-        check=False,
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=30,
-    )
-    if p.returncode == 0:
-        return p.stdout.strip()
-    return None
+# Read from a file rather than the module's own __checksum__: that would mean loading the module, and a loaded
+# extension can't be unloaded or reloaded, so a rebuild would never be picked up in this process.
+def _read_checksum(checksum_path: Path) -> str | None:
+    try:
+        return checksum_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
 
 
 def _parse_cargo_messages(stdout: str) -> list[RustDiagnostic]:
@@ -346,7 +323,6 @@ def _check_build_fetch_module_impl(
     ext_name = module_name + "_ext"
 
     module_dir = extmodule_root / ext_name
-    module_dir.mkdir(exist_ok=True, parents=True)
 
     if str(extmodule_root) not in sys.path:
         sys.path.append(str(extmodule_root))
@@ -354,14 +330,16 @@ def _check_build_fetch_module_impl(
     module, code, hashval = module_spec.make_source(module_name)
 
     lib_path = get_lib_path(extmodule_root, module_name)
+    checksum_path = get_checksum_path(module_dir)
 
-    # if a built module already exists, and matches the hash of the source code, just use it
-    module_checksum = _get_module_checksum(lib_path, module_name)
+    # if a built module already exists, and matches the hash of the source code, just use it. Nothing else is read or
+    # written, so a check has no side effects and needs only the binary and its checksum
+    module_checksum = _read_checksum(checksum_path) if lib_path.exists() else None
 
     # assume exists and up-to-date
     exists, outdated = True, False
     if module_checksum is None:
-        logger.info(f"module {extmodule_root.name}.{ext_name}.{module_name} not found or not importable")
+        logger.info(f"module {extmodule_root.name}.{ext_name}.{module_name} not found or has no checksum")
         exists = False
     elif module_checksum != hashval:
         logger.info(f"module is outdated ({hashval})")
@@ -372,12 +350,16 @@ def _check_build_fetch_module_impl(
     if outdated or not exists:
         logger.info(f"(re)building module {extmodule_root.name}.{ext_name}.{module_name}")
 
+        # invalidate before building, and only restore after a successful build: otherwise a failed or interrupted
+        # build could leave the old checksum vouching for a binary that wasn't built from these sources
+        checksum_path.unlink(missing_ok=True)
+
         # save the code with the hash embedded
         src_dir = module_dir / "src"
-        src_dir.mkdir(exist_ok=True)
+        src_dir.mkdir(exist_ok=True, parents=True)
         with (src_dir / "lib.rs").open("w") as fd:
             # can't use format as its full of { }
-            fd.write(code.replace("__HASH__", str(hashval)))
+            fd.write(rustfmt(code.replace("__HASH__", str(hashval))))
         logger.info(f"wrote {module_dir}/lib.rs")
 
         for file in module_spec.modules:
@@ -424,14 +406,15 @@ def _check_build_fetch_module_impl(
                 errors,
             )
 
+        if not lib_path.exists():
+            raise RustConfigError(
+                f"Compiled library not found at expected path: {lib_path}\n"
+                f"Check cargo output for build errors or different naming conventions."
+            )
+
+        checksum_path.write_text(hashval, encoding="utf-8")
         _warn(ext_name, all_diagnostics)
         logger.info(f"built {extmodule_root.name}.{ext_name}.{module_name}")
-
-    if not lib_path.exists():
-        raise RustConfigError(
-            f"Compiled library not found at expected path: {lib_path}\n"
-            f"Check cargo output for build errors or different naming conventions."
-        )
 
     # namespaced, as module_name defaults to the defining python module's name, which a bare sys.modules entry would
     # replace (breaking any later import of it). The init function is found from the last component of the name

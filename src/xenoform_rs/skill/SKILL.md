@@ -15,9 +15,9 @@ xenoform-rs lets you write a type-annotated Python function, decorate it with `@
 the Rust *body* of that function in its docstring. On import, xenoform-rs translates the Python
 signature to Rust, generates a pyo3 extension crate under `ext/<module>_ext/`, compiles it with
 `cargo`, and replaces the Python function with the compiled one. A hash of the source and
-`Cargo.toml` is cached so unchanged modules are not rebuilt; the hash includes the interpreter
-ABI (Python version, GIL vs free-threaded), so switching interpreters rebuilds automatically
-into that interpreter's own cache subdirectory.
+`Cargo.toml` is stored in the module folder so unchanged modules are not rebuilt; each interpreter
+ABI (Python version, GIL vs free-threaded) has its own binaries and hashes, so switching
+interpreters rebuilds automatically into that interpreter's own cache subdirectory.
 
 This skill is a quick reference. The canonical docs are the project's own `README.md` — read it
 for the full walkthrough and worked examples (loop, distance matrix, Monte Carlo, Levenshtein).
@@ -51,8 +51,10 @@ one of these:
 
 Conversely, it's usually **not** worth it for: code that's already dominated by a vectorised
 numpy/pandas call (the glue Python around it isn't the bottleneck), code that only runs rarely or
-on small inputs (the one-time compile cost and added complexity outweigh the win), or code that
-needs libraries/behaviour with no Rust equivalent readily available. When in doubt, write the
+on small inputs (the one-time compile cost and added complexity outweigh the win), code that
+needs libraries/behaviour with no Rust equivalent readily available, or code that has to ship as
+prebuilt binaries (a wheel, or an image without a Rust toolchain): xenoform-rs compiles on the
+machine that runs it, so use [maturin](https://www.maturin.rs/) for that. When in doubt, write the
 plain-Python version first and profile before reaching for `@rust`.
 
 ## Minimal example
@@ -172,6 +174,8 @@ For a module `my_module.py`, generated artifacts live under `ext/my_module_ext/`
 - `src/lib.rs` — the generated Rust source; read this to see exactly what Rust code was produced
   from your Python signature.
 - `build.log` — captured `cargo build` output.
+- `<abi-tag>.checksum` — the hash of the sources that interpreter's binary was built from. Deleting
+  it (or the whole folder) forces a rebuild.
 
 The compiled shared library is in `ext/target/<abi-tag>/release/`, a cargo target directory shared by
 every module (one subdirectory per interpreter ABI). A `target/` folder inside `ext/my_module_ext/` is
