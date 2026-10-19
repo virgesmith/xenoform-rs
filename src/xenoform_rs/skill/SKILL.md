@@ -51,8 +51,10 @@ one of these:
 
 Conversely, it's usually **not** worth it for: code that's already dominated by a vectorised
 numpy/pandas call (the glue Python around it isn't the bottleneck), code that only runs rarely or
-on small inputs (the one-time compile cost and added complexity outweigh the win), or code that
-needs libraries/behaviour with no Rust equivalent readily available. When in doubt, write the
+on small inputs (the one-time compile cost and added complexity outweigh the win), code that
+needs libraries/behaviour with no Rust equivalent readily available, or code that has to ship as
+prebuilt binaries (a wheel, or an image without a Rust toolchain): xenoform-rs compiles on the
+machine that runs it, so use [maturin](https://www.maturin.rs/) for that. When in doubt, write the
 plain-Python version first and profile before reaching for `@rust`.
 
 ## Minimal example
