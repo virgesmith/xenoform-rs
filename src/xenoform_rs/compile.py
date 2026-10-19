@@ -323,10 +323,6 @@ def _check_build_fetch_module_impl(
     ext_name = module_name + "_ext"
 
     module_dir = extmodule_root / ext_name
-
-    if str(extmodule_root) not in sys.path:
-        sys.path.append(str(extmodule_root))
-
     module, code, hashval = module_spec.make_source(module_name)
 
     lib_path = get_lib_path(extmodule_root, module_name)
@@ -384,7 +380,7 @@ def _check_build_fetch_module_impl(
             encoding="utf-8",
             errors="replace",
             env=_get_cargo_env(),
-            timeout=300,
+            timeout=get_config().build_timeout,
         )
         all_diagnostics = _parse_cargo_messages(compile_result.stdout)
         build_log.write_text(

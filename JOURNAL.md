@@ -22,6 +22,39 @@ Entry template:
 
 ---
 
+## 2026-10-19 — Configurable build timeout; remove dead config and `sys.path` entry (#13) (#36)
+
+**Why** — Three small #13 items. The 300 s `cargo build` timeout was hardcoded, and heavy dependency trees (polars,
+ndarray+BLAS) on slow CI runners can exceed it. `XenoformRsConfig.rustfmt` had never been read (found in #35). The
+`sys.path.append(extmodule_root)` in `compile.py` was vestigial.
+
+**What**
+- `XenoformRsConfig.build_timeout: int = 300`, set via `XENOFORM_RS_BUILD_TIMEOUT` and passed to the `cargo build`
+  subprocess. Documented in README.
+- Removed the `rustfmt` config field. rustfmt still runs unconditionally when `lib.rs` is written.
+- Removed the `sys.path` append.
+
+**Design decisions**
+- *Timeout as config, not a decorator parameter.* It depends on the machine and the dependency tree, not on the
+  function. It also isn't part of the hash, because it doesn't change what gets built.
+- *`rustfmt` removed rather than given a meaning* (e.g. a switch to turn formatting off). Hashing uses the unformatted
+  source since #35, so formatting only costs ~11 ms per rebuild, and a toolchain without rustfmt already falls back
+  to writing `lib.rs` unformatted. Its `"file"` default looks like it was carried over from clang-format's
+  `--style=file`, which rustfmt has no equivalent for: it finds `rustfmt.toml` itself. A leftover
+  `XENOFORM_RS_RUSTFMT` in someone's environment is simply ignored.
+- *The `sys.path` entry did nothing useful and a little harm.* Modules are loaded by absolute path with
+  `ExtensionFileLoader` and registered in `sys.modules` directly. Since the shared target dir (#34) the binaries
+  aren't under `<name>_ext/` anyway. Lookups by name (e.g. unpickling) hit `sys.modules` first. The entry was relative
+  to the cwd, and made every `<name>_ext` folder importable as an empty namespace package, which could shadow a real
+  package.
+
+**Follow-ups**
+- A timeout raises a bare `subprocess.TimeoutExpired`. Wrapping it in `CompilationError` with a hint about
+  `XENOFORM_RS_BUILD_TIMEOUT` would make the setting discoverable at the point of failure.
+- `build_timeout` isn't validated: `0` or a negative value times out immediately (`PositiveInt` would reject it).
+
+---
+
 ## 2026-10-19 — Scope: on-the-fly development, not distribution (#35)
 
 **Why** — Review of #35 found that one of its design decisions had been justified by a "lean docker image": a
