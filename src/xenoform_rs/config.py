@@ -1,6 +1,7 @@
 from functools import cache
 from pathlib import Path
 
+from pydantic import PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,7 +10,7 @@ class XenoformRsConfig(BaseSettings):
     extmodule_root: Path = Path("./ext")
     pyo3_version: str = "0.29"
     verbose: str | None = None
-    build_timeout: int = 300
+    build_timeout: PositiveInt = 300
 
     model_config = SettingsConfigDict(env_prefix="XENOFORM_RS_", extra="ignore")
 

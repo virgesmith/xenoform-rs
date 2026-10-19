@@ -695,7 +695,7 @@ disabled.
 
 ### Build Timeout
 
-The build command times out by default after 300s. This can be adjusted if necessary, due to heavy rust dependencies, by setting `XENOFORM_RS_BUILD_TIMEOUT` (in seconds).
+The build command times out by default after 300s. This can be adjusted if necessary, due to heavy rust dependencies, by setting `XENOFORM_RS_BUILD_TIMEOUT` (in seconds, and positive). A build that times out raises a `CompilationError`.
 
 ## Notebooks
 

@@ -371,17 +371,24 @@ def _check_build_fetch_module_impl(
         logger.info(f"building {extmodule_root.name}.{ext_name}.{module_name}...")
         build_log = module_dir / "build.log"
 
-        compile_result = subprocess.run(
-            ["cargo", "build", "--release", "--message-format=json"],
-            cwd=module_dir,
-            check=False,
-            capture_output=True,
-            # rustc emits UTF-8 regardless of platform; the locale default (e.g. cp1252 on Windows) could fail to decode
-            encoding="utf-8",
-            errors="replace",
-            env=_get_cargo_env(),
-            timeout=get_config().build_timeout,
-        )
+        try:
+            compile_result = subprocess.run(
+                ["cargo", "build", "--release", "--message-format=json"],
+                cwd=module_dir,
+                check=False,
+                capture_output=True,
+                # rustc emits UTF-8 regardless of platform; the locale default (e.g. cp1252 on Windows) could fail to
+                # decode
+                encoding="utf-8",
+                errors="replace",
+                env=_get_cargo_env(),
+                timeout=get_config().build_timeout,
+            )
+        except subprocess.TimeoutExpired as e:
+            raise CompilationError(
+                f"Cargo build for module '{ext_name}' timed out after {e.timeout}s. Heavy dependencies can take a while "
+                "to build the first time: set XENOFORM_RS_BUILD_TIMEOUT to allow longer (in seconds)"
+            ) from e
         all_diagnostics = _parse_cargo_messages(compile_result.stdout)
         build_log.write_text(
             compile_result.stderr + "".join(d.rendered for d in all_diagnostics),
