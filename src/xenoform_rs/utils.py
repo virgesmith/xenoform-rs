@@ -242,18 +242,33 @@ def load_rust_module(lib_path: Path, module_name: str) -> ModuleType:
         ) from e
 
 
+def _holds(path: Path, content: bytes) -> bool:
+    try:
+        return path.read_bytes() == content
+    except OSError:
+        return False
+
+
 def atomic_write(path: Path, text: str) -> None:
     """
     Write a file such that a concurrent reader (e.g. cargo, when two processes build the same module at once) sees the
-    old or the new content, never a partial file. Concurrent writes of different content aren't detected: the last
-    replace wins
+    old or the new content, never a partial file. The file is left untouched if it already holds the content.
+    Concurrent writes of different content aren't detected: the last replace wins
     """
+    # bytes, not text mode, so windows doesn't translate newlines and the content can be compared exactly
+    content = text.encode("utf-8")
+    if _holds(path, content):
+        return
     # in the same folder, as a replace is only atomic within a filesystem. Unique to the process and thread so concurrent
     # writers don't share it, and opened normally (unlike tempfile's 0600) so the file keeps the usual permissions
     tmp_path = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     try:
-        tmp_path.write_text(text, encoding="utf-8")
+        tmp_path.write_bytes(content)
         tmp_path.replace(path)
-    except BaseException:
+    except PermissionError:
+        # windows refuses to replace a file that another process has open. That's harmless if another build has just
+        # written the same content, but not if e.g. the file is read-only
+        if not _holds(path, content):
+            raise
+    finally:
         tmp_path.unlink(missing_ok=True)
-        raise

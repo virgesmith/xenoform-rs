@@ -31,9 +31,12 @@ themselves with its lock on the shared target dir, so the files cargo reads were
 
 **What**
 - `utils.atomic_write(path, text)`: writes to a temp file beside `path`, then `Path.replace`s it into place, so a
-  reader sees the old file or the new one, never part of one. The temp file is removed if the write or replace fails.
-- Used for `lib.rs`, `Cargo.toml`, the copied `modules` files and the checksum file. Writes are now always UTF-8: the
-  previous `open("w")` used the locale encoding (cp1252 on Windows).
+  reader sees the old file or the new one, never part of one. The temp file is always removed.
+- It does nothing if the file already holds the content. On Windows, if the replace is refused (`PermissionError`)
+  but the file now holds the content, that counts as success.
+- Used for `lib.rs`, `Cargo.toml`, the copied `modules` files and the checksum file. Writes are now always UTF-8 bytes,
+  so there's no newline translation on Windows: the previous `open("w")` used the locale encoding (cp1252 on Windows)
+  and wrote CRLF.
 
 **Design decisions**
 - *Atomic writes rather than a lock.* When concurrent builds have the same source, which is the realistic case, both
@@ -45,6 +48,18 @@ themselves with its lock on the shared target dir, so the files cargo reads were
   files with mode `0600`, which `replace` keeps, so build files would no longer follow the umask. Also rejected:
   `fsync` before the replace. It makes the file durable across power loss, which atomicity for concurrent readers
   doesn't need, and an interrupted build is redone anyway because the checksum is written last.
+- *Windows: a refused replace of identical content is accepted, not retried or warned about.* The first CI run failed
+  on Windows 3.14t: `os.replace` (`MoveFileEx`) fails with "Access is denied" when another process has the target
+  open, even with delete sharing, unlike a POSIX rename. Four processes building the same module collided on
+  `Cargo.toml`. Skipping the write when the content is unchanged means only the first writer replaces, and if two
+  first writers collide, the loser finds the winner's identical file. Rejected: retrying with backoff. It's
+  timing-based and only helps when the content differs, which needs concurrent builds of different sources: rare,
+  unsupported, and almost never intentional. Also rejected: warning and continuing. It's noise when the content
+  matches, and when it doesn't, the build would go ahead with the wrong source and then write its own checksum.
+  The file is re-read rather than ignoring every `PermissionError`, so a real failure, e.g. a read-only file, still
+  raises.
+- *Bytes, not text mode*, so the existing file can be compared with the new content exactly. Text mode on Windows
+  writes CRLF, so the comparison would never match. Cargo and rustc don't mind LF.
 - *The checksum goes through the same helper.* A torn read of it would only cause an unnecessary rebuild, but using
   the helper costs nothing.
 - *Copied modules are read as UTF-8 text* so they can use the same helper. Rust source must be UTF-8, so nothing valid
@@ -53,11 +68,13 @@ themselves with its lock on the shared target dir, so the files cargo reads were
 **Follow-ups**
 - The full lock, if concurrent builds of different sources ever matter. Without it the last replace wins, and one
   process's checksum can end up next to a binary built from the other's source.
-- Both processes still run cargo. The second run normally finds nothing to do, but a replace updates the file's
-  mtime, so cargo may rebuild. On Windows that fails if another process has the DLL loaded. Skipping the write when
-  the content is unchanged would avoid it.
+- Both processes still run cargo. The second run normally finds nothing to do, now that unchanged files aren't
+  rewritten and their mtimes stay the same.
+- Accepted: if the source changed and another process is reading the *old* checksum file at the moment it's
+  replaced, Windows refuses the replace and the build raises. The read takes microseconds and has to coincide with
+  the end of a build that takes seconds. Re-running fixes it.
 - `test_concurrent_build` rarely failed before this change because the race window is narrow. It's there to check
-  that concurrent replaces work on every platform.
+  that concurrent replaces work on every platform, and it caught the Windows refused-replace failure above.
 
 ---
 
