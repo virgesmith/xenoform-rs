@@ -67,5 +67,60 @@ def test_load_rust_module_no_spec(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
         utils.load_rust_module(tmp_path / "whatever.so", "whatever")
 
 
+def test_atomic_write(tmp_path: Path) -> None:
+    path = tmp_path / "lib.rs"
+    utils.atomic_write(path, "old")
+    utils.atomic_write(path, "new")
+
+    assert path.read_text(encoding="utf-8") == "new"
+    # the temp file is renamed into place, not left beside it
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_atomic_write_failure_leaves_original(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "lib.rs"
+    utils.atomic_write(path, "old")
+
+    def fail(*_args: object) -> None:
+        raise PermissionError("in use")
+
+    # e.g. on windows, when another process has the file open without delete sharing
+    monkeypatch.setattr(Path, "replace", fail)
+    with pytest.raises(PermissionError):
+        utils.atomic_write(path, "new")
+
+    assert path.read_text(encoding="utf-8") == "old"
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_atomic_write_same_content_is_not_rewritten(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "lib.rs"
+    utils.atomic_write(path, "fn f() {}\n")
+
+    def fail(*_args: object) -> None:
+        raise AssertionError("file was rewritten")
+
+    # a rewrite would update the mtime, so cargo might rebuild, and on windows could clash with another process
+    monkeypatch.setattr(Path, "replace", fail)
+    utils.atomic_write(path, "fn f() {}\n")
+
+    assert path.read_bytes() == b"fn f() {}\n"
+
+
+def test_atomic_write_refused_replace_of_same_content(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "lib.rs"
+
+    def other_process_wins(_self: Path, target: Path) -> None:
+        # e.g. on windows: another build wrote the same content first and its cargo has the file open
+        target.write_bytes(b"new")
+        raise PermissionError("in use")
+
+    monkeypatch.setattr(Path, "replace", other_process_wins)
+    utils.atomic_write(path, "new")
+
+    assert path.read_bytes() == b"new"
+    assert list(tmp_path.iterdir()) == [path]
+
+
 if __name__ == "__main__":
     test_rust_dependency()

@@ -24,6 +24,7 @@ from xenoform_rs.errors import (
 )
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import (
+    atomic_write,
     get_checksum_path,
     get_function_scope,
     get_lib_path,
@@ -353,21 +354,19 @@ def _check_build_fetch_module_impl(
         # save the code with the hash embedded
         src_dir = module_dir / "src"
         src_dir.mkdir(exist_ok=True, parents=True)
-        with (src_dir / "lib.rs").open("w") as fd:
-            # can't use format as its full of { }
-            fd.write(rustfmt(code.replace("__HASH__", str(hashval))))
+        atomic_write(src_dir / "lib.rs", rustfmt(code.replace("__HASH__", str(hashval))))
         logger.info(f"wrote {module_dir}/lib.rs")
 
         for file in module_spec.modules:
             dest = src_dir / file.name
-            dest.write_bytes(file.read_bytes())
+            # rust source is always UTF-8
+            atomic_write(dest, file.read_text(encoding="utf-8"))
             logger.info(f"copied {file} to {dest}")
 
         # Write Cargo.toml
-        with (module_dir / "Cargo.toml").open("w") as f:
-            f.write(module)
-
+        atomic_write(module_dir / "Cargo.toml", module)
         logger.info(f"wrote {module_dir}/Cargo.toml")
+
         logger.info(f"building {extmodule_root.name}.{ext_name}.{module_name}...")
         build_log = module_dir / "build.log"
 
@@ -415,7 +414,7 @@ def _check_build_fetch_module_impl(
                 f"Check cargo output for build errors or different naming conventions."
             )
 
-        checksum_path.write_text(hashval, encoding="utf-8")
+        atomic_write(checksum_path, hashval)
         _warn(ext_name, all_diagnostics)
         logger.info(f"built {extmodule_root.name}.{ext_name}.{module_name}")
 
