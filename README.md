@@ -67,6 +67,10 @@ Caveats & points to note:
     - only generic (untyped) functions/closures are supported.
     - a type override is necessary to pass functions as arguments. The default works for return values.
 - complex: 128 bit support only (i.e. not `np.complex64`)
+- `datetime` maps to `jiff::Zoned`, which accepts any timezone-aware datetime: `timezone.utc`, fixed offsets and
+`zoneinfo.ZoneInfo` (whose DST rules are kept). Naive datetimes raise `TypeError`. Add the crate with
+`dependencies=[rust_dependency("jiff", version="0.2")]`. Known pyo3 issue: a `datetime` returned in the repeated
+hour after clocks go back comes back an hour early (`fold` is lost). See [test_datetime.py](src/test/test_datetime.py).
 - if additional modules are specified, the files are copied into the crate. Modifications to additional modules will
 trigger a rebuild.
 - no support for compound types, other than optional (`T | None`) (This would require building support for rust enums).
@@ -569,6 +573,8 @@ Python | rust
 `T \| None` | `Option<T>`
 `Callable` | `&Bound<'py, PyCFunction>`
 `...` | `&Bound<'py, PyEllipsis>`
+`datetime` | `jiff::Zoned`
+`timedelta` | `jiff::SignedDuration`
 
 Thus, `dict[str, list[float]]` becomes - by default - `HashMap<String, Vec<f64>>`.
 

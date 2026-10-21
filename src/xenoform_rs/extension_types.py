@@ -1,5 +1,6 @@
 # dummy generic types for references and pointers
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from types import EllipsisType, NoneType, UnionType
 from typing import Annotated, Any, Self, get_args, get_origin
 
@@ -48,6 +49,8 @@ DEFAULT_TYPE_MAPPING: dict[Any, str] = {
     UnionType: "Option",
     Callable: "&Bound<'py, PyCFunction>",  # override function arguments to Bound<'py, PyAny> to pass python functions/lambdas to rust
     EllipsisType: "&Bound<'py, PyEllipsis>",
+    datetime: "jiff::Zoned",
+    timedelta: "jiff::SignedDuration",
 }
 
 
@@ -84,7 +87,10 @@ class RustTypeTree:
         if not self.type and not override:
             raise RustTypeError(f"Don't know a Rust type for '{tree.type}' and no override provided")
         self.override = override
-        if tree.type == np.ndarray:
+        if override is not None:
+            # the override is the whole rust type, so type parameters with no default mapping must not be translated
+            self.subtypes: tuple[RustTypeTree, ...] = ()
+        elif tree.type == np.ndarray:
             self.subtypes: tuple[RustTypeTree, ...] = (RustTypeTree(tree.subtypes[1].subtypes[0]),)
         elif tree.type == Callable:
             # pyo3 doesn't support typing callable objects
