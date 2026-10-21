@@ -59,6 +59,10 @@ Users add `jiff = "0.2"` themselves via `rust_dependency`, as they do for `numpy
   to pass extra pyo3 features, since a user `pyo3` dependency duplicates the key in Cargo.toml.
 - `jiff` not added to the generated Cargo.toml — a user's own `rust_dependency("jiff", ...)` would duplicate the key.
   Consistent with `numpy`.
+- Naive datetimes via a type override to `jiff::civil::DateTime`, not a second default — tz-awareness is a runtime
+  property of the value, not of the `datetime` type, so the translation can't choose. `Zoned` is the default because
+  the pandas use case is mostly aware timestamps, and naive ones are rejected loudly rather than guessed at. Documented
+  in the README, SKILL.md and AGENTS.md, and tested.
 - `timedelta` → `SignedDuration`, not `Span` — pyo3 converts `timedelta` into a `Span` but not back, so `-> timedelta`
   wouldn't compile. `SignedDuration` is also the same concept as `timedelta`, a fixed length of time; a `Span` holds
   calendar units ("1 month") with no fixed length.

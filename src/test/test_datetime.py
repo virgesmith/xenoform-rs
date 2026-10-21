@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta, timezone
+from typing import Annotated
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -24,6 +25,16 @@ def _td(hours: float = 0) -> pd.Timedelta:
 
 @rust(py=False, dependencies=[JIFF])
 def shift(t: datetime, dt: timedelta) -> datetime:  # ty: ignore[empty-body]
+    """
+    Ok(t.checked_add(dt)?)
+    """
+
+
+# naive datetimes need the civil type override: the default jiff::Zoned requires a tzinfo
+@rust(py=False, dependencies=[JIFF])
+def shift_naive(
+    t: Annotated[datetime, "jiff::civil::DateTime"], dt: timedelta
+) -> Annotated[datetime, "jiff::civil::DateTime"]:  # ty: ignore[empty-body]
     """
     Ok(t.checked_add(dt)?)
     """
@@ -93,6 +104,24 @@ def test_zone_name_is_visible_to_rust() -> None:
 def test_naive_datetime_rejected() -> None:
     with pytest.raises(TypeError, match="non-None tzinfo"):
         shift(datetime(2026, 1, 1), timedelta(0))
+
+
+def test_naive_datetime_via_civil_override() -> None:
+    t = datetime(2026, 7, 1, 12, 34, 56, 789)
+    result = shift_naive(t, timedelta(hours=1))
+    assert result == datetime(2026, 7, 1, 13, 34, 56, 789)
+    assert result.tzinfo is None
+    assert shift_naive(_ts("2026-07-01 12:00"), _td(hours=1)) == datetime(2026, 7, 1, 13)
+
+
+def test_civil_override_rejects_aware_datetime() -> None:
+    with pytest.raises(TypeError, match="without tzinfo"):
+        shift_naive(datetime(2026, 1, 1, tzinfo=UTC), timedelta(0))
+
+
+def test_civil_arithmetic_is_wall_clock() -> None:
+    # no zone, so no DST: across the UK clocks going back, 00:30 + 2h is 02:30 (3 real hours in London)
+    assert shift_naive(datetime(2026, 10, 25, 0, 30), timedelta(hours=2)) == datetime(2026, 10, 25, 2, 30)
 
 
 def test_timedelta_round_trips() -> None:
