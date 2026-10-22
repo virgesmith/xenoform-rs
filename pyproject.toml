@@ -15,6 +15,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    "filelock>=4.2.2",
     "itrx>=0.2.1",
     "numpy>=2.4.3",
     "pydantic-settings>=2.13.1",
