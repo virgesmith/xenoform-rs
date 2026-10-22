@@ -22,6 +22,62 @@ Entry template:
 
 ---
 
+## 2026-10-21 — `Annotated` overrides skip unmapped type parameters (#38)
+
+**Why** — an override is meant to be the whole rust type, but `RustTypeTree` still translated the python type's
+parameters. Any parameter without a default mapping raised, even though `__repr__` returns the override and never reads
+them: `Annotated[npt.NDArray[np.datetime64], "PyReadonlyArray1<'py, Datetime<Microseconds>>"]` failed on
+`np.datetime64`. A top-level unmapped type was already fine (`Annotated[X, ...]`), so nesting changed the behaviour.
+
+**What** — when an override is given, `subtypes` is empty and no recursion happens.
+
+**Design decisions**
+- Fix the escape hatch rather than map `np.datetime64` — a mapping fixes one type, not the cause, and AGENTS.md says
+  not to special-case types when an override should work.
+- Rejected: annotating the python side as `npt.NDArray[Any]` (lies to type checkers); passing the override down or
+  translating lazily (more code for a result nothing reads).
+- Safe because `subtypes` is only read behind the `if self.override` early return in `__repr__`, and the `T | None`
+  check already skips overridden types.
+
+**Follow-ups** — none.
+
+## 2026-10-21 — `datetime` / `timedelta` map to jiff (#13) (#38)
+
+**Why** — `datetime` had no default mapping, and the obvious chrono one, `DateTime<Utc>`, only accepts
+`datetime.timezone.utc`: pyo3 rejects any other tzinfo. Rust code that should work on "a datetime in whatever zone the
+caller gave" had no type to write.
+
+**What** — `datetime` → `jiff::Zoned`, `timedelta` → `jiff::SignedDuration`; pyo3 is built with its `jiff-02` feature.
+Users add `jiff = "0.2"` themselves via `rust_dependency`, as they do for `numpy`.
+
+**Design decisions**
+- jiff `Zoned` over chrono — chrono puts the kind of zone in the type parameter, and pyo3 accepts a different subset
+  for each one: `DateTime<Utc>` takes only UTC, `DateTime<FixedOffset>` rejects `ZoneInfo` (its `utcoffset(None)` is
+  `None`), and `DateTime<chrono_tz::Tz>` rejects `timezone.utc` (it has no `.key`). `Zoned` holds the zone as a runtime
+  value and pyo3 accepts all three, keeping IANA names and DST rules.
+- `chrono` pyo3 feature not enabled — one datetime library keeps build cost down. A chrono override would need a way
+  to pass extra pyo3 features, since a user `pyo3` dependency duplicates the key in Cargo.toml.
+- `jiff` not added to the generated Cargo.toml — a user's own `rust_dependency("jiff", ...)` would duplicate the key.
+  Consistent with `numpy`.
+- Naive datetimes via a type override to `jiff::civil::DateTime`, not a second default — tz-awareness is a runtime
+  property of the value, not of the `datetime` type, so the translation can't choose. `Zoned` is the default because
+  the pandas use case is mostly aware timestamps, and naive ones are rejected loudly rather than guessed at. Documented
+  in the README, SKILL.md and AGENTS.md, and tested.
+- `timedelta` → `SignedDuration`, not `Span` — pyo3 converts `timedelta` into a `Span` but not back, so `-> timedelta`
+  wouldn't compile. `SignedDuration` is also the same concept as `timedelta`, a fixed length of time; a `Span` holds
+  calendar units ("1 month") with no fixed length.
+- `pd.Timestamp`/`pd.Timedelta` are tested directly — they subclass `datetime`/`timedelta`, so pyo3 accepts them, and
+  pandas is the main use case. pandas comes from the `examples` extra, installed by CI and `uv sync --dev --all-extras`.
+
+**Follow-ups**
+- Nanoseconds in a `pd.Timestamp` are silently dropped: pyo3 converts via the `datetime` fields, which stop at
+  microseconds. Pinned by a test.
+- pyo3 0.29.3 bug: `Zoned` → `datetime` never sets `fold=1`, so a time in the repeated hour after clocks go back is
+  returned an hour early. Covered by a strict xfail in `test_datetime.py`; report upstream.
+- Windows: jiff needs a timezone database for `ZoneInfo` lookups. It should bundle one there by default (and Python gets
+  `tzdata` via pandas), but CI hasn't confirmed this.
+- A way to pass extra pyo3 features (e.g. `chrono`, `chrono-tz`) for `Annotated` overrides.
+
 ## 2026-10-19 — Atomic writes of build files (#13) (#37)
 
 **Why** — #13's "Lock concurrent builds". When two processes (pytest-xdist, multiprocessing) or two free-threaded

@@ -12,10 +12,12 @@ description: >
 # Developing with xenoform-rs
 
 xenoform-rs lets you write a type-annotated Python function, decorate it with `@rust`, and put
-the Rust *body* of that function in its docstring. On import, xenoform-rs translates the Python
-signature to Rust, generates a pyo3 extension crate under `ext/<module>_ext/`, compiles it with
-`cargo`, and replaces the Python function with the compiled one. A hash of the source and
-`Cargo.toml` is stored in the module folder so unchanged modules are not rebuilt; each interpreter
+the Rust *body* of that function in its docstring. Importing the module only registers each
+decorated function. On the first call to any of them, xenoform-rs translates the Python
+signatures to Rust, generates one pyo3 extension crate for the module under `ext/<module>_ext/`,
+compiles it with `cargo`, and replaces the Python functions with the compiled ones — so build
+errors surface at that first call, not at import. A hash of the source and `Cargo.toml` is stored
+in the module folder so unchanged modules are not rebuilt; each interpreter
 ABI (Python version, GIL vs free-threaded) has its own binaries and hashes, so switching
 interpreters rebuilds automatically into that interpreter's own cache subdirectory.
 
@@ -74,6 +76,31 @@ The docstring is the Rust function *body*: it must end in something producing th
 wrapped implicitly in `PyResult<...>` — return `Ok(value)`, or `Err(...)` to raise a Python
 exception.
 
+Default argument values, positional-only/keyword-only markers (`/`, `*`), `*args` and `**kwargs`
+are all supported.
+
+### Methods
+
+Instance, static and class methods work. `self` is a Rust keyword, so name the instance parameter
+something else (by convention `pyself`, typed `Self`). Put `@staticmethod`/`@classmethod`
+*above* `@rust`:
+
+```py
+class Thing:
+    @rust(py=False)
+    def method(pyself: Self) -> int:  # noqa: N805
+        """
+        pyself.getattr("x")?.extract::<i32>()
+        """
+
+    @staticmethod
+    @rust(py=False)
+    def static_method(i: int) -> int:
+        """
+        Ok(i + 1000)
+        """
+```
+
 ## `@rust` decorator parameters
 
 | name | type | default | description |
@@ -116,6 +143,8 @@ exception.
 | `T \| None` | `Option<T>` |
 | `Callable` | `&Bound<'py, PyCFunction>` |
 | `...` | `&Bound<'py, PyEllipsis>` |
+| `datetime` | `jiff::Zoned` |
+| `timedelta` | `jiff::SignedDuration` |
 
 Nested generics recurse: `dict[str, list[float]]` → `HashMap<String, Vec<f64>>`.
 
@@ -134,6 +163,9 @@ its reference stripped (you get `Bound<'py, T>` back, since you can't return a b
 
 ## Gotchas
 
+- **`RustTypeError: Don't know a Rust type for ...`** means the type has no default mapping. Add an
+  `Annotated` override with the Rust type you want; the override replaces the whole type, so
+  unmapped type parameters inside it (e.g. `npt.NDArray[np.datetime64]`) are fine.
 - **Compound types beyond `T | None` aren't supported** — there's no mapping for e.g.
   `int | float` because it would need a Rust enum. Use an `Annotated` override to a generic
   type (`Annotated[int | float, "&Bound<'py, PyAny>"]`) or coerce to one Rust type
@@ -152,7 +184,26 @@ its reference stripped (you get `Bound<'py, T>` back, since you can't return a b
   Callable *return* types work with the default mapping.
 - **Only the mutable-array mapping (`npt.NDArray`) is actually mutable by default.** For `dict`,
   `list`, `set`, or `bytearray`, override to the corresponding pyo3 type (e.g. `PyList`) to
-  mutate in place.
+  mutate in place. For a safe writable numpy array, take `&Bound<'py, PyArray1<f64>>` and call
+  `.try_readwrite()?`: it raises on a read-only array (e.g. from pandas copy-on-write), whereas a
+  `PyReadwriteArray1` argument panics.
+- **Rust code must be threadsafe under a free-threaded interpreter.** There, extension modules
+  are built without the GIL by default; set `XENOFORM_RS_DISABLE_FT` to opt out.
+- **`datetime` must be timezone-aware by default.** It maps to `jiff::Zoned`, which accepts
+  `timezone.utc`, fixed offsets and `zoneinfo.ZoneInfo` (and `pd.Timestamp`, a `datetime`
+  subclass), keeping IANA names and DST rules. A naive datetime raises `TypeError`. For naive
+  datetimes, use a type override to the civil type — it rejects aware ones, and its arithmetic
+  is wall-clock, with no DST:
+  ```py
+  @rust(py=False, dependencies=[rust_dependency("jiff", version="0.2")])
+  def add(t: Annotated[datetime, "jiff::civil::DateTime"], dt: timedelta) -> Annotated[datetime, "jiff::civil::DateTime"]:
+      """
+      Ok(t + dt)
+      """
+  ```
+  Either way, add the `jiff` crate with `rust_dependency("jiff", version="0.2")`. Nanoseconds in
+  a `pd.Timestamp` are dropped. Known pyo3 0.29.3 bug: a `Zoned` *returned* in the repeated hour
+  after clocks go back comes back an hour early (`fold` is lost).
 - **No linking to external prebuilt binaries.** Only source (the docstring plus any `modules=`
   files) is compiled.
 - **Extra `modules=` files are copied into the crate** — editing them triggers a rebuild just
@@ -166,8 +217,29 @@ its reference stripped (you get `Bound<'py, T>` back, since you can't return a b
 | `XENOFORM_RS_EXTMODULE_ROOT` | Move compiled modules out of the default `ext/` subdirectory. Avoid path characters (space, hyphen) invalid in a Python module name. |
 | `XENOFORM_RS_VERBOSE` | Any value (including empty) turns on INFO-level logging of compile/check/import steps with timings, on xenoform-rs's own logger only — never touches `logging.basicConfig`/root logging. |
 | `XENOFORM_RS_DISABLE_FT` | Disable building free-threaded (GIL-free) extension modules under a free-threaded interpreter. |
+| `XENOFORM_RS_BUILD_TIMEOUT` | Build timeout in seconds (positive, default 300). Raise it for heavy dependency trees. A timeout raises `CompilationError`. |
+
+## Notebooks
+
+- **Functions defined in a cell need `module_name=`**, e.g. `@rust(py=False, module_name="nb")`:
+  the default module name comes from the source file, and Jupyter's cell files aren't valid
+  module names.
+- **Running the defining cell only registers the function.** The module compiles when a cell
+  first calls one of its functions, and compile errors appear in *that* cell's output.
+- **Changes need a kernel restart**, whether the `@rust` function is in a cell or an imported
+  `.py` file (`%autoreload` doesn't help): a process can't unload a compiled module.
 
 ## Troubleshooting a failed build
+
+A failed build raises `CompilationError` at the first call. Its message holds rustc's errors,
+shortened: only those with a suggested fix (or else the first), without notes about code outside
+the module. All errors are on `e.diagnostics` as `RustDiagnostic` objects (`code`, `message`,
+`file`, `line`); line numbers refer to the generated `src/lib.rs`. Errors from before rustc runs
+(e.g. an invalid `profile` or `edition`) are in the message, with `diagnostics` empty.
+
+A successful build with rustc warnings issues each as a `RustWarning` (a `UserWarning`), only when
+the module is (re)built. Turn them into errors with `warnings.simplefilter("error", RustWarning)`
+or pytest's `filterwarnings = ["error::xenoform_rs.RustWarning"]`.
 
 For a module `my_module.py`, generated artifacts live under `ext/my_module_ext/`:
 

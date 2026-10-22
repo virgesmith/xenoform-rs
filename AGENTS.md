@@ -67,7 +67,7 @@ design, not just the next diff.**
 
 ## Project Overview
 
-`xenoform-rs` is a Python library that lets you write and execute Rust code inline in Python. You annotate a Python function with the `@rust` decorator and put the Rust implementation in its docstring; on import, the library translates the Python type signatures to Rust types, generates a pyo3 extension module, compiles it with `cargo`, and replaces the Python function with the compiled Rust one.
+`xenoform-rs` is a Python library that lets you write and execute Rust code inline in Python. You annotate a Python function with the `@rust` decorator and put the Rust implementation in its docstring; on the first call, the library translates the Python type signatures to Rust types, generates a pyo3 extension module, compiles it with `cargo`, and replaces the Python function with the compiled Rust one.
 
 The library source lives in [src/xenoform_rs/](src/xenoform_rs/). Key modules:
 
@@ -127,6 +127,10 @@ Coverage must be 100% (`fail_under = 100` under `[tool.coverage.report]` in [pyp
   module's `__annotations__`, not on the value, so it can't be found for an imported constant, and falling back to the
   default type changes the width silently. Don't reintroduce an annotation lookup for constants. See the 2026-10-12
   "`rust_constant`" and 2026-10-13 "constants by name" entries in [JOURNAL.md](JOURNAL.md).
+- **`datetime` maps to `jiff::Zoned`, which needs a timezone; naive datetimes use the override.**
+  `Annotated[datetime, "jiff::civil::DateTime"]` is the documented route for naive datetimes. Don't detect naive vs aware
+  in the core translation: tz-awareness is a runtime property of the value, not of the `datetime` type, so the
+  translation can't see it. See the 2026-10-21 jiff entry in [JOURNAL.md](JOURNAL.md).
 - **Only the three latest Python minor versions are supported** (currently 3.13, 3.14, 3.15). When a new minor version is released, drop the oldest and add the new one in a single PR. That PR must keep `requires-python`, the classifiers in [pyproject.toml](pyproject.toml), the CI matrix in [lint-test.yml](.github/workflows/lint-test.yml), pyo3's `abi3-pyXY` feature in [rustmodule.py](src/xenoform_rs/rustmodule.py) and the matrix listed under [QA Rules](#qa-rules) in step. Code may use any language or stdlib feature available in the oldest supported version, and compatibility shims for dropped versions should be removed.
 - **Free-threaded support must be preserved.** The library builds GIL-free extension modules when running under free-threaded Python (`3.14t`). Changes affecting the pyo3 bindings or module build flags must not regress free-threaded behaviour.
 - **Type annotations required.** All function signatures need full annotations. `ty` will catch missing or incorrect ones.
@@ -145,7 +149,9 @@ When reviewing a PR or diff, check:
 6. **API consistency** — new `@rust` decorator parameters must follow the existing naming conventions and be documented in [README.md](README.md).
 7. **Types** — return types and generics should be precise. Avoid `Any` unless unavoidable.
 8. **Ruff rules** — no rule in the `select` list should be suppressed without justification. Active rules: `ARG, B, C, D103, E, F, I, N, PERF, PTH, RET, RUF, SIM, UP, W` (E501 ignored; D103 also ignored in test files).
-9. **README / examples** — if the public API or type table changes, update [README.md](README.md) and verify the examples still run.
+9. **README / SKILL / examples** — if the public API or type table changes, update [README.md](README.md) and the agent
+   skill [SKILL.md](src/xenoform_rs/skill/SKILL.md) (it has its own copy of the type table and gotchas), and verify the
+   examples still run.
 
 ## QA Rules
 
@@ -225,7 +231,8 @@ pyproject.toml
 4. Add or update tests in [src/test/](src/test/) — each new type mapping, parameter, or error path needs coverage.
 5. Add a task/design entry to [JOURNAL.md](JOURNAL.md) (see [Task & Design Summaries](#task--design-summaries)).
 6. Run the full gate suite locally (including the examples).
-7. If the public API or type translation table changed, update [README.md](README.md).
+7. If the public API or type translation table changed, update [README.md](README.md) and
+   [SKILL.md](src/xenoform_rs/skill/SKILL.md).
 8. Commit — pre-commit hooks will auto-fix formatting and re-lock `uv.lock`.
 9. Open a PR targeting `main`; CI must pass (all OS × Python version combinations) before merging.
 10. To release: bump the version in [pyproject.toml](pyproject.toml), merge to `main`, then push a `vX.Y.Z` tag — PyPI publish triggers automatically.

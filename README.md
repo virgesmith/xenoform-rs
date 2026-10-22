@@ -28,7 +28,7 @@ Here's what happens automatically when you import a module with `@rust`-decorate
 The Rust functions execute directly with minimal overhead.
 
 **Change detection:**
-Each module's hash covers its generated source code, its Cargo.toml and any additional rust modules. On import,
+Each module's hash covers its generated source code, its Cargo.toml and any additional rust modules. On first call,
 xenoform-rs compares it with the hash recorded when the module was last built, and rebuilds the module if they differ.
 Each interpreter ABI (Python version, and whether the build is GIL-enabled or free-threaded) has its own binary and
 recorded hash, so switching Python versions or GIL/free-threaded builds triggers a build the first time, and switching
@@ -67,6 +67,12 @@ Caveats & points to note:
     - only generic (untyped) functions/closures are supported.
     - a type override is necessary to pass functions as arguments. The default works for return values.
 - complex: 128 bit support only (i.e. not `np.complex64`)
+- `datetime` maps to `jiff::Zoned`, which accepts any timezone-aware datetime: `timezone.utc`, fixed offsets and
+`zoneinfo.ZoneInfo` (whose DST rules are kept). Naive datetimes raise `TypeError`: for those, use a type override to
+jiff's civil type, `Annotated[datetime, "jiff::civil::DateTime"]`, which in turn rejects aware datetimes. Civil
+arithmetic is wall-clock, with no DST. Add the crate with `dependencies=[rust_dependency("jiff", version="0.2")]`.
+Known pyo3 issue: a `datetime` returned in the repeated hour after clocks go back comes back an hour early (`fold` is
+lost). See [test_datetime.py](src/test/test_datetime.py).
 - if additional modules are specified, the files are copied into the crate. Modifications to additional modules will
 trigger a rebuild.
 - no support for compound types, other than optional (`T | None`) (This would require building support for rust enums).
@@ -569,6 +575,8 @@ Python | rust
 `T \| None` | `Option<T>`
 `Callable` | `&Bound<'py, PyCFunction>`
 `...` | `&Bound<'py, PyEllipsis>`
+`datetime` | `jiff::Zoned`
+`timedelta` | `jiff::SignedDuration`
 
 Thus, `dict[str, list[float]]` becomes - by default - `HashMap<String, Vec<f64>>`.
 

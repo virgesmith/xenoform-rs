@@ -115,6 +115,18 @@ def test_user_type() -> None:
     process_x_annotated(X())
 
 
+def test_override_skips_unmapped_type_parameters() -> None:
+    class X: ...
+
+    with pytest.raises(RustTypeError):
+        translate_type(list[X])
+    assert str(translate_type(Annotated[list[X], "Vec<Foo>"])) == "Vec<Foo>"  # ty: ignore[invalid-argument-type]
+    rusttype = translate_type(
+        Annotated[npt.NDArray[np.datetime64], "PyReadonlyArray1<'py, Datetime<Microseconds>>"]  # ty: ignore[invalid-argument-type]
+    )
+    assert str(rusttype) == "PyReadonlyArray1<'py, Datetime<Microseconds>>"
+
+
 def test_parse_annotation() -> None:
     t, override = parse_annotation(int)
     assert t is int
