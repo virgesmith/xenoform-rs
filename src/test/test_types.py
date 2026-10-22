@@ -1,3 +1,4 @@
+from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Annotated, Any
 
 import numpy as np
@@ -24,6 +25,16 @@ def test_basic_types() -> None:
 
     rusttype = translate_type(bytes)
     assert str(rusttype) == "&'py [u8]"
+
+
+def test_datetime_types() -> None:
+    assert str(translate_type(datetime)) == "jiff::Zoned"
+    assert str(translate_type(timedelta)) == "jiff::SignedDuration"
+    assert str(translate_type(date)) == "jiff::civil::Date"
+    assert str(translate_type(time)) == "jiff::civil::Time"
+    assert str(translate_type(tzinfo)) == "jiff::tz::TimeZone"
+    assert str(translate_type(list[date])) == "Vec<jiff::civil::Date>"
+    assert str(translate_type(time | None)) == "Option<jiff::civil::Time>"  # ty: ignore[invalid-argument-type]
 
 
 def test_pytypetree_basic_types() -> None:

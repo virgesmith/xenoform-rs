@@ -73,6 +73,15 @@ jiff's civil type, `Annotated[datetime, "jiff::civil::DateTime"]`, which in turn
 arithmetic is wall-clock, with no DST. Add the crate with `dependencies=[rust_dependency("jiff", version="0.2")]`.
 Known pyo3 issue: a `datetime` returned in the repeated hour after clocks go back comes back an hour early (`fold` is
 lost). See [test_datetime.py](src/test/test_datetime.py).
+- `date`, `time` and `tzinfo` map to jiff's `civil::Date`, `civil::Time` and `tz::TimeZone`. A `datetime` passed as a
+`date` silently loses its time (`datetime` subclasses `date`), and a `time`'s `tzinfo` and `fold` are silently dropped.
+`tzinfo` accepts `ZoneInfo`, `timezone.utc` and fixed offsets, and is returned as the same kind.
+- `pd.NaT` isn't `None`, so `datetime | None` doesn't catch it. It raises `TypeError` for `datetime` and `timedelta`.
+For `date` and civil types it raises under the default build, but **under free-threaded Python it is silently read as
+0001-01-01** (free-threaded builds can't use the stable ABI, so pyo3 reads `NaT`'s underlying C fields). For a list,
+replace it with `None` and use `list[datetime | None]`: e.g. `list(idx.astype(object).where(idx.notna(), None))`. For
+speed, pass a `datetime64` array instead (`Annotated[npt.NDArray[np.datetime64], "PyReadonlyArray1<'py,
+Datetime<Microseconds>>"]`, with `idx.as_unit("us").values`), where `NaT` is `i64::MIN`.
 - if additional modules are specified, the files are copied into the crate. Modifications to additional modules will
 trigger a rebuild.
 - no support for compound types, other than optional (`T | None`) (This would require building support for rust enums).
@@ -577,6 +586,9 @@ Python | rust
 `...` | `&Bound<'py, PyEllipsis>`
 `datetime` | `jiff::Zoned`
 `timedelta` | `jiff::SignedDuration`
+`date` | `jiff::civil::Date`
+`time` | `jiff::civil::Time`
+`tzinfo` | `jiff::tz::TimeZone`
 
 Thus, `dict[str, list[float]]` becomes - by default - `HashMap<String, Vec<f64>>`.
 

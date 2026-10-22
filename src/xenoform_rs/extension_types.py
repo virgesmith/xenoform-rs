@@ -1,6 +1,6 @@
 # dummy generic types for references and pointers
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, tzinfo
 from types import EllipsisType, NoneType, UnionType
 from typing import Annotated, Any, Self, get_args, get_origin
 
@@ -51,6 +51,9 @@ DEFAULT_TYPE_MAPPING: dict[Any, str] = {
     EllipsisType: "&Bound<'py, PyEllipsis>",
     datetime: "jiff::Zoned",
     timedelta: "jiff::SignedDuration",
+    date: "jiff::civil::Date",
+    time: "jiff::civil::Time",
+    tzinfo: "jiff::tz::TimeZone",
 }
 
 
