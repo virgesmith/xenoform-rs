@@ -38,9 +38,11 @@ handling documented and tested. README, SKILL.md and tests updated.
   account for DST anyway.
 - `tzinfo` → `TimeZone` — lets a zone be an argument (e.g. convert to a caller's zone). pyo3 maps `ZoneInfo` by IANA
   key and other tzinfos by fixed offset, and returns UTC/IANA/fixed zones as `timezone.utc`/`ZoneInfo`/`timezone`.
-- `pd.NaT` documented and tested, not converted — it's a `datetime` subclass with no data, so every mapping raises a
-  `TypeError` (`Zoned`: "non-None tzinfo"; civil/`Date`: "'float' cannot be interpreted as an integer"), and it isn't
-  `None`, so `Option<_>` doesn't catch it. Documented routes: replace with `None` and take `list[datetime | None]`, or
+- `pd.NaT` documented and tested, not converted — it's a `datetime` subclass with no data, and it isn't `None`, so
+  `Option<_>` doesn't catch it. `Zoned` always raises ("non-None tzinfo": its tzinfo is None). `Date`/civil types
+  depend on the build: under the stable ABI pyo3 reads attributes, which are `nan`, and raises; free-threaded builds
+  can't use the stable ABI, so pyo3 reads `NaT`'s C fields and **silently gets 0001-01-01**. Found by the 3.14t CI jobs;
+  the test asserts each behaviour by `Py_GIL_DISABLED`. The silent case is why the docs say never to pass `NaT`. Documented routes: replace with `None` and take `list[datetime | None]`, or
   pass a `datetime64` array, where `NaT` is `i64::MIN`. Rejected: replacing `NaT` with `None` in the Python call
   wrapper (walks every argument and list element in Python on every call, and needs knowledge of pandas); generating a
   NaT-aware Rust wrapper type (breaks `T | None` → `Option<T>`, injects code into every module) — revisit only if NaT
@@ -51,6 +53,10 @@ handling documented and tested. README, SKILL.md and tests updated.
 - Documented overrides: `jiff::Timestamp` for aware datetimes (avoids the fold bug), numpy `datetime64` arrays
   (fast pandas indexes, nanosecond precision; the `NaT` test already uses one).
 - Report the pyo3 fold bug upstream.
+- `test_concurrent_build` failed once on 3.15 Windows (`WinError 5` replacing `lib.rs`), unrelated to this change: a
+  replace can be refused while another build has the file open or is replacing it, and the file then can't be read to
+  see it already holds the same content. Marked non-strict xfail on Windows rather than adding a retry. The maintainer
+  questions whether atomic writes (#37) earn their complexity for a rare case: an agenda item for the next design review.
 
 ## 2026-10-21 — `Annotated` overrides skip unmapped type parameters (#38)
 
@@ -85,6 +91,11 @@ Users add `jiff = "0.2"` themselves via `rust_dependency`, as they do for `numpy
   for each one: `DateTime<Utc>` takes only UTC, `DateTime<FixedOffset>` rejects `ZoneInfo` (its `utcoffset(None)` is
   `None`), and `DateTime<chrono_tz::Tz>` rejects `timezone.utc` (it has no `.key`). `Zoned` holds the zone as a runtime
   value and pyo3 accepts all three, keeping IANA names and DST rules.
+- `jiff-02` always enabled, not only for modules whose signatures use jiff types — measured (2026-10-22, 16 cores,
+  Linux, `test_basic`): a cold build of pyo3 takes 5.9s → 6.5s wall clock (12.5s → 23.4s CPU, 12.2s → 19.4s on one
+  core), a module rebuild is unchanged at 0.2s, and each module grows 543 → 566 KiB. It's a one-off per interpreter
+  ABI since modules share a target dir (#34). Enabling it per module would compile pyo3 twice in a project that mixes
+  both kinds, costing more than it saves. Windows (where jiff bundles a tz database) not measured.
 - `chrono` pyo3 feature not enabled — one datetime library keeps build cost down. A chrono override would need a way
   to pass extra pyo3 features, since a user `pyo3` dependency duplicates the key in Cargo.toml.
 - `jiff` not added to the generated Cargo.toml — a user's own `rust_dependency("jiff", ...)` would duplicate the key.

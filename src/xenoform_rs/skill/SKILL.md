@@ -211,8 +211,10 @@ its reference stripped (you get `Bound<'py, T>` back, since you can't return a b
   loses its time (`datetime` subclasses `date`), and a `time`'s `tzinfo` and `fold` are
   dropped. `tzinfo` (→ `jiff::tz::TimeZone`) accepts `ZoneInfo`, `timezone.utc` and fixed
   offsets, and comes back as the same kind.
-- **`pd.NaT` raises `TypeError` for every datetime mapping, even `datetime | None`** — `NaT` is a
-  `datetime` subclass with no data, not `None`. For a list, replace it with `None` and take
+- **Never pass `pd.NaT`: it isn't `None`, so `datetime | None` doesn't catch it** — `NaT` is a
+  `datetime` subclass with no data. It raises `TypeError` for `datetime` and `timedelta`. As a
+  `date` or civil type it raises under the default build but, **under free-threaded Python, is
+  silently read as 0001-01-01** (no stable ABI, so pyo3 reads its C fields). For a list, replace it with `None` and take
   `list[datetime | None]`: `list(idx.astype(object).where(idx.notna(), None))`. For speed, pass
   `idx.as_unit("us").values` as
   `Annotated[npt.NDArray[np.datetime64], "PyReadonlyArray1<'py, Datetime<Microseconds>>"]`

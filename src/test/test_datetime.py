@@ -1,3 +1,4 @@
+import sysconfig
 from datetime import UTC, date, datetime, time, timedelta, timezone, tzinfo
 from typing import Annotated
 from zoneinfo import ZoneInfo
@@ -251,13 +252,22 @@ def test_tzinfo_argument() -> None:
     assert (result.hour, result.tzname()) == (13, "BST")
 
 
-# pd.NaT is a datetime subclass with no data, so pyo3 accepts it as a datetime and then fails reading its fields.
-# It isn't None, so `datetime | None` doesn't help either: replace NaT with None first, or pass a datetime64 array
-def test_nat_rejected() -> None:
+# pd.NaT is a datetime subclass with no data, and isn't None, so `datetime | None` doesn't help: replace NaT with None
+# first, or pass a datetime64 array. Zoned always rejects it: its tzinfo is None
+def test_nat_rejected_as_zoned() -> None:
     with pytest.raises(TypeError, match="non-None tzinfo"):
         shift(pd.NaT, _td())  # ty: ignore[invalid-argument-type]
-    with pytest.raises(TypeError, match="cannot be interpreted as an integer"):
-        next_day(pd.NaT)  # ty: ignore[invalid-argument-type]
+
+
+# date and civil types read the date fields, and what they get depends on the build. Under the stable ABI (abi3, the
+# default) pyo3 reads attributes, which are nan for NaT, and fails. Free-threaded builds can't use the stable ABI, so
+# pyo3 reads NaT's underlying C fields, which hold 0001-01-01: NaT is silently read as that date
+def test_nat_as_date_depends_on_abi() -> None:
+    if sysconfig.get_config_var("Py_GIL_DISABLED"):
+        assert next_day(pd.NaT) == date(1, 1, 2)  # ty: ignore[invalid-argument-type]
+    else:
+        with pytest.raises(TypeError, match="cannot be interpreted as an integer"):
+            next_day(pd.NaT)  # ty: ignore[invalid-argument-type]
 
 
 def test_nat_in_list_rejected_until_replaced_with_none() -> None:
