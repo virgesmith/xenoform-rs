@@ -118,7 +118,7 @@ Coverage must be 100% (`fail_under = 100` under `[tool.coverage.report]` in [pyp
 
 ## Developer Rules
 
-- **Runtime dependencies are intentional.** `itrx`, `numpy`, and `pydantic-settings` are runtime deps. New runtime deps need a strong justification; dev-only tools go in `[dependency-groups.dev]` in [pyproject.toml](pyproject.toml).
+- **Runtime dependencies are intentional.** `filelock`, `itrx`, `numpy`, and `pydantic-settings` are runtime deps. New runtime deps need a strong justification; dev-only tools go in `[dependency-groups.dev]` in [pyproject.toml](pyproject.toml).
 - **Type translation is the critical path.** Changes to [extension_types.py](src/xenoform_rs/extension_types.py) affect every user and must be accompanied by tests covering the affected type mappings.
 - **Generated Rust must compile.** When modifying the code generation in [compile.py](src/xenoform_rs/compile.py), verify the output is valid Rust — run the full test suite, which will catch this.
 - **The `Annotated` override mechanism is the escape hatch.** Do not special-case types in the core translation logic when an `Annotated` override can solve the problem instead.

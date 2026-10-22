@@ -22,6 +22,55 @@ Entry template:
 
 ---
 
+## 2026-10-22 — Lock the whole build with `filelock`, replacing atomic writes (#40)
+
+**Why** — the atomic writes of #37 stopped a concurrent build reading a half-written file, but left the gaps listed in
+that entry's follow-ups: concurrent builds of *different* sources could pair one process's checksum with a binary built
+from the other's source, every concurrent builder still ran cargo, and on Windows a replace of the checksum could be
+refused while another process read it. `atomic_write` also needed its own Windows workaround and four unit tests.
+
+**What**
+- New runtime dependency `filelock`. `_check_build_fetch_module_impl` takes a `FileLock` on
+  `<module_dir>/.build.lock` before building, and holds it from the check, through writing the sources and
+  `cargo build`, to writing the checksum.
+- Double-checked: the up-to-date check (`_is_current`) runs first without the lock, and again once the lock is held,
+  so a process that waited on another's build of the same source skips its own.
+- The build sequence moved, unchanged, into `_build`, which keeps the nesting readable.
+- `utils.atomic_write` is replaced by `utils.write_utf8`: a plain write, still UTF-8 bytes with LF line endings, still
+  skipped if the file already holds the content.
+
+**Design decisions**
+- *Reverses the 2026-10-19 "atomic writes rather than a lock" decision.* The reasons for rejecting the lock then were
+  a new dependency or our own `fcntl`/`msvcrt` code, and separate handling of threads. `filelock` removes the second
+  and third: it is pure Python with no dependencies, handles POSIX and Windows, and is thread-local by default, so
+  free-threaded threads in one process each take their own OS lock and block each other. That's the strong
+  justification AGENTS.md asks of a runtime dependency. `msvcrt.locking` alone would have needed our own wait loop,
+  as it gives up after about 10 seconds.
+- *The fast path takes no lock*, so importing an up-to-date module creates no lock file and has no side effects (it can
+  still be in a read-only folder). An unlocked reader can see a torn checksum, but a truncated hash never equals a full
+  one, so the worst case is taking the lock and re-checking.
+- *One lock per module, in the module folder.* Rejected: a global lock, which would serialise unrelated modules that
+  cargo's own target-dir lock already handles. Rejected: a lock file beside the module folder so it survives an
+  `rmtree` of it. Deleting the folder mid-build isn't supported anyway. The one lock also covers builds of the same
+  module by different interpreters (e.g. 3.14 and 3.14t), which share the folder and its sources.
+- *No timeout on the wait.* The OS releases the lock if its holder dies, and a hung build is already bounded by
+  `XENOFORM_RS_BUILD_TIMEOUT`. A timeout would add an error path, and a waiter queued behind several builds could
+  time out spuriously.
+- *Unchanged content is still not rewritten.* It's no longer needed for correctness, but a rewrite updates the mtime
+  and cargo rebuilds, e.g. when another interpreter has already written the same sources.
+- The re-check under the lock is unit-tested by making the first check stale: it's a race that real processes hit
+  only by timing.
+- The Windows xfail on `test_concurrent_builds_of_the_same_module_succeed` (#39) is removed: the `WinError 5` it
+  allowed came from concurrent replaces of `lib.rs`, which the lock serialises. This settles the design-review agenda
+  item #39 raised about atomic writes.
+
+**Follow-ups**
+- On Windows, a process that has already loaded the old binary still blocks a rebuild that would overwrite the DLL.
+  The lock doesn't change that.
+- Builds outside xenoform (a manual `cargo build`) don't take the lock.
+
+---
+
 ## 2026-10-22 — `date`, `time` and `tzinfo` map to jiff; `pd.NaT` (#13) (#39)
 
 **Why** — after #38, `datetime` and `timedelta` had jiff mappings but `date`, `time` and `tzinfo` had none, so a
@@ -57,6 +106,8 @@ handling documented and tested. README, SKILL.md and tests updated.
   replace can be refused while another build has the file open or is replacing it, and the file then can't be read to
   see it already holds the same content. Marked non-strict xfail on Windows rather than adding a retry. The maintainer
   questions whether atomic writes (#37) earn their complexity for a rare case: an agenda item for the next design review.
+
+---
 
 ## 2026-10-21 — `Annotated` overrides skip unmapped type parameters (#38)
 
@@ -163,6 +214,7 @@ themselves with its lock on the shared target dir, so the files cargo reads were
   is lost.
 
 **Follow-ups**
+- *Superseded by the 2026-10-22 `filelock` entry (#40), which locks the whole build and removes `atomic_write`.*
 - The full lock, if concurrent builds of different sources ever matter. Without it the last replace wins, and one
   process's checksum can end up next to a binary built from the other's source.
 - Both processes still run cargo. The second run normally finds nothing to do, now that unchanged files aren't
@@ -344,7 +396,7 @@ on every import (Linux; Python starts more slowly on macOS and Windows).
 - `test_module_reused_when_up_to_date` is still skipped on Windows because "re-checking a loaded module rebuilds".
   That was probably the subprocess check failing there, which would have meant every Windows import rebuilt. The
   check no longer loads anything, so the skip can likely go, but that needs Windows CI to confirm.
-- Build locking (#13) should cover the whole read, build and stamp sequence.
+- Build locking (#13) should cover the whole read, build and stamp sequence. *Done in #40.*
 - `XenoformRsConfig.rustfmt` is never read.
 
 ---

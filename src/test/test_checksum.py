@@ -70,6 +70,28 @@ def test_build_writes_checksum_and_reuses_module(cargo_runs: list[list[str]]) ->
     assert len(cargo_runs) == 1
 
 
+def test_build_skipped_if_another_finished_while_waiting(
+    cargo_runs: list[list[str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = _spec()
+    _check_build_fetch_module_impl("checksum_waiter", spec)
+    cargo_runs.clear()
+
+    checks: list[bool] = []
+    real_is_current = compile_mod._is_current
+
+    def stale_until_locked(*args: Any) -> bool:
+        # the check before the lock sees no build, as if another process's build was still running. By the time the
+        # lock is taken that build has finished, so the check under the lock finds it current
+        checks.append(bool(checks) and real_is_current(*args))
+        return checks[-1]
+
+    monkeypatch.setattr(compile_mod, "_is_current", stale_until_locked)
+    _check_build_fetch_module_impl("checksum_waiter", spec)
+    assert checks == [False, True]
+    assert cargo_runs == []
+
+
 def test_missing_checksum_rebuilds(cargo_runs: list[list[str]]) -> None:
     spec = _spec()
     _check_build_fetch_module_impl("checksum_missing", spec)

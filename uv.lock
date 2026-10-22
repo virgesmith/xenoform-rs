@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -667,6 +667,7 @@ name = "xenoform-rs"
 version = "0.1.6"
 source = { editable = "." }
 dependencies = [
+    { name = "filelock" },
     { name = "itrx" },
     { name = "numpy" },
     { name = "pydantic-settings" },
@@ -688,6 +689,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "filelock", specifier = ">=4.2.2" },
     { name = "itrx", specifier = ">=0.2.1" },
     { name = "numpy", specifier = ">=2.4.3" },
     { name = "pandas", marker = "extra == 'examples'", specifier = ">=3.0" },

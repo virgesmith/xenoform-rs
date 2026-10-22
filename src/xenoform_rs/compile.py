@@ -13,6 +13,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from filelock import FileLock
+
 from xenoform_rs.config import get_config
 from xenoform_rs.errors import (
     AnnotationError,
@@ -24,7 +26,6 @@ from xenoform_rs.errors import (
 )
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 from xenoform_rs.utils import (
-    atomic_write,
     get_checksum_path,
     get_function_scope,
     get_lib_path,
@@ -33,6 +34,7 @@ from xenoform_rs.utils import (
     rustfmt,
     translate_constant,
     translate_function_signature,
+    write_utf8,
 )
 
 logger = logging.getLogger(__name__)
@@ -153,6 +155,22 @@ def _read_checksum(checksum_path: Path) -> str | None:
         return checksum_path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return None
+
+
+def _is_current(lib_path: Path, checksum_path: Path, hashval: str, full_name: str) -> bool:
+    """
+    Whether a built module exists and matches the hash of the source code. Nothing else is read or written, so a check
+    has no side effects and needs only the binary and its checksum
+    """
+    module_checksum = _read_checksum(checksum_path) if lib_path.exists() else None
+    if module_checksum is None:
+        logger.info(f"module {full_name} not found or has no checksum")
+        return False
+    if module_checksum != hashval:
+        logger.info(f"module is outdated ({hashval})")
+        return False
+    logger.info(f"module is up-to-date ({hashval})")
+    return True
 
 
 def _parse_cargo_messages(stdout: str) -> list[RustDiagnostic]:
@@ -317,6 +335,92 @@ def _translate_constants(entries: list[str], namespace: Mapping[str, Any]) -> li
     return constant_defs
 
 
+def _build(
+    module_spec: ModuleSpec,
+    *,
+    ext_name: str,
+    full_name: str,
+    module_dir: Path,
+    module: str,
+    code: str,
+    hashval: str,
+    lib_path: Path,
+    checksum_path: Path,
+) -> None:
+    logger.info(f"(re)building module {full_name}")
+
+    # invalidate before building, and only restore after a successful build: otherwise a failed or interrupted
+    # build could leave the old checksum vouching for a binary that wasn't built from these sources
+    checksum_path.unlink(missing_ok=True)
+
+    # save the code with the hash embedded
+    src_dir = module_dir / "src"
+    src_dir.mkdir(exist_ok=True, parents=True)
+    write_utf8(src_dir / "lib.rs", rustfmt(code.replace("__HASH__", str(hashval))))
+    logger.info(f"wrote {module_dir}/lib.rs")
+
+    for file in module_spec.modules:
+        dest = src_dir / file.name
+        # rust source is always UTF-8
+        write_utf8(dest, file.read_text(encoding="utf-8"))
+        logger.info(f"copied {file} to {dest}")
+
+    # Write Cargo.toml
+    write_utf8(module_dir / "Cargo.toml", module)
+    logger.info(f"wrote {module_dir}/Cargo.toml")
+
+    logger.info(f"building {full_name}...")
+    build_log = module_dir / "build.log"
+
+    try:
+        compile_result = subprocess.run(
+            ["cargo", "build", "--release", "--message-format=json"],
+            cwd=module_dir,
+            check=False,
+            capture_output=True,
+            # rustc emits UTF-8 regardless of platform; the locale default (e.g. cp1252 on Windows) could fail to
+            # decode
+            encoding="utf-8",
+            errors="replace",
+            env=_get_cargo_env(),
+            timeout=get_config().build_timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise CompilationError(
+            f"Cargo build for module '{ext_name}' timed out after {e.timeout}s. Heavy dependencies can take a while "
+            "to build the first time: set XENOFORM_RS_BUILD_TIMEOUT to allow longer (in seconds)"
+        ) from e
+    all_diagnostics = _parse_cargo_messages(compile_result.stdout)
+    build_log.write_text(
+        compile_result.stderr + "".join(d.rendered for d in all_diagnostics),
+        encoding="utf-8",
+    )
+    if compile_result.returncode != 0:
+        errors = [d for d in all_diagnostics if d.level.startswith("error")]
+        if errors:
+            shown = _select(errors)
+            details = "\n\n".join(_brief(d.rendered) for d in shown)
+            if hidden := len(errors) - len(shown):
+                details += f"\n\n...and {hidden} more error{'s' if hidden > 1 else ''}, see {build_log}"
+        else:
+            # errors that never reach rustc (e.g. an invalid Cargo.toml) are only reported on stderr
+            details = _stderr_errors(compile_result.stderr)
+        raise CompilationError(
+            f"Cargo build failed for module '{ext_name}' (full output in {build_log}):\n\n{details}",
+            errors,
+        )
+
+    if not lib_path.exists():
+        raise RustConfigError(
+            f"Compiled library not found at expected path: {lib_path}\n"
+            f"Check cargo output for build errors or different naming conventions."
+        )
+
+    write_utf8(checksum_path, hashval)
+    _warn(ext_name, all_diagnostics)
+    logger.info(f"built {full_name}")
+
+
 def _check_build_fetch_module_impl(
     module_name: str,
     module_spec: ModuleSpec,
@@ -329,94 +433,25 @@ def _check_build_fetch_module_impl(
     lib_path = get_lib_path(extmodule_root, module_name)
     checksum_path = get_checksum_path(module_dir)
 
-    # if a built module already exists, and matches the hash of the source code, just use it. Nothing else is read or
-    # written, so a check has no side effects and needs only the binary and its checksum
-    module_checksum = _read_checksum(checksum_path) if lib_path.exists() else None
-
-    # assume exists and up-to-date
-    exists, outdated = True, False
-    if module_checksum is None:
-        logger.info(f"module {extmodule_root.name}.{ext_name}.{module_name} not found or has no checksum")
-        exists = False
-    elif module_checksum != hashval:
-        logger.info(f"module is outdated ({hashval})")
-        outdated = True
-    else:
-        logger.info(f"module is up-to-date ({hashval})")
-
-    if outdated or not exists:
-        logger.info(f"(re)building module {extmodule_root.name}.{ext_name}.{module_name}")
-
-        # invalidate before building, and only restore after a successful build: otherwise a failed or interrupted
-        # build could leave the old checksum vouching for a binary that wasn't built from these sources
-        checksum_path.unlink(missing_ok=True)
-
-        # save the code with the hash embedded
-        src_dir = module_dir / "src"
-        src_dir.mkdir(exist_ok=True, parents=True)
-        atomic_write(src_dir / "lib.rs", rustfmt(code.replace("__HASH__", str(hashval))))
-        logger.info(f"wrote {module_dir}/lib.rs")
-
-        for file in module_spec.modules:
-            dest = src_dir / file.name
-            # rust source is always UTF-8
-            atomic_write(dest, file.read_text(encoding="utf-8"))
-            logger.info(f"copied {file} to {dest}")
-
-        # Write Cargo.toml
-        atomic_write(module_dir / "Cargo.toml", module)
-        logger.info(f"wrote {module_dir}/Cargo.toml")
-
-        logger.info(f"building {extmodule_root.name}.{ext_name}.{module_name}...")
-        build_log = module_dir / "build.log"
-
-        try:
-            compile_result = subprocess.run(
-                ["cargo", "build", "--release", "--message-format=json"],
-                cwd=module_dir,
-                check=False,
-                capture_output=True,
-                # rustc emits UTF-8 regardless of platform; the locale default (e.g. cp1252 on Windows) could fail to
-                # decode
-                encoding="utf-8",
-                errors="replace",
-                env=_get_cargo_env(),
-                timeout=get_config().build_timeout,
-            )
-        except subprocess.TimeoutExpired as e:
-            raise CompilationError(
-                f"Cargo build for module '{ext_name}' timed out after {e.timeout}s. Heavy dependencies can take a while "
-                "to build the first time: set XENOFORM_RS_BUILD_TIMEOUT to allow longer (in seconds)"
-            ) from e
-        all_diagnostics = _parse_cargo_messages(compile_result.stdout)
-        build_log.write_text(
-            compile_result.stderr + "".join(d.rendered for d in all_diagnostics),
-            encoding="utf-8",
-        )
-        if compile_result.returncode != 0:
-            errors = [d for d in all_diagnostics if d.level.startswith("error")]
-            if errors:
-                shown = _select(errors)
-                details = "\n\n".join(_brief(d.rendered) for d in shown)
-                if hidden := len(errors) - len(shown):
-                    details += f"\n\n...and {hidden} more error{'s' if hidden > 1 else ''}, see {build_log}"
-            else:
-                # errors that never reach rustc (e.g. an invalid Cargo.toml) are only reported on stderr
-                details = _stderr_errors(compile_result.stderr)
-            raise CompilationError(
-                f"Cargo build failed for module '{ext_name}' (full output in {build_log}):\n\n{details}",
-                errors,
-            )
-
-        if not lib_path.exists():
-            raise RustConfigError(
-                f"Compiled library not found at expected path: {lib_path}\n"
-                f"Check cargo output for build errors or different naming conventions."
-            )
-
-        atomic_write(checksum_path, hashval)
-        _warn(ext_name, all_diagnostics)
-        logger.info(f"built {extmodule_root.name}.{ext_name}.{module_name}")
+    full_name = f"{extmodule_root.name}.{ext_name}.{module_name}"
+    if not _is_current(lib_path, checksum_path, hashval, full_name):
+        module_dir.mkdir(parents=True, exist_ok=True)
+        # held from the check to the stamp, so concurrent builds (processes, or free-threaded threads) neither read each
+        # other's partly written sources nor pair one's checksum with a binary built from another's
+        with FileLock(module_dir / ".build.lock"):
+            # another build may have finished while this one waited
+            if not _is_current(lib_path, checksum_path, hashval, full_name):
+                _build(
+                    module_spec,
+                    ext_name=ext_name,
+                    full_name=full_name,
+                    module_dir=module_dir,
+                    module=module,
+                    code=code,
+                    hashval=hashval,
+                    lib_path=lib_path,
+                    checksum_path=checksum_path,
+                )
 
     # namespaced, as module_name defaults to the defining python module's name, which a bare sys.modules entry would
     # replace (breaking any later import of it). The init function is found from the last component of the name
