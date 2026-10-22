@@ -1,7 +1,9 @@
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta, timezone, tzinfo
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
+import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import pytest
 
@@ -41,6 +43,34 @@ def shift_naive(
 
 
 @rust(py=False, dependencies=[JIFF])
+def next_day(d: date) -> date:  # ty: ignore[empty-body]
+    """
+    Ok(d.tomorrow()?)
+    """
+
+
+@rust(py=False, dependencies=[JIFF])
+def add_minutes(t: time, m: int) -> time:  # ty: ignore[empty-body]
+    """
+    Ok(t.wrapping_add(jiff::SignedDuration::from_mins(m.into())))
+    """
+
+
+@rust(py=False, dependencies=[JIFF])
+def in_zone(t: datetime, tz: tzinfo) -> datetime:  # ty: ignore[empty-body]
+    """
+    Ok(t.with_time_zone(tz))
+    """
+
+
+@rust(py=False, dependencies=[JIFF])
+def zone_of(t: datetime) -> tzinfo:  # ty: ignore[empty-body]
+    """
+    Ok(t.time_zone().clone())
+    """
+
+
+@rust(py=False, dependencies=[JIFF])
 def zone_name(t: datetime) -> str | None:
     """
     Ok(t.time_zone().iana_name().map(String::from))
@@ -54,6 +84,27 @@ def hours_since_start(t: list[datetime]) -> list[float]:  # ty: ignore[empty-bod
         return Ok(Vec::new());
     };
     Ok(t.iter().map(|ti| ti.duration_since(start).as_secs_f64() / 3600.0).collect())
+    """
+
+
+@rust(py=False, dependencies=[JIFF])
+def count_missing(t: list[datetime | None]) -> int:  # ty: ignore[empty-body]
+    """
+    Ok(t.iter().filter(|ti| ti.is_none()).count() as i32)
+    """
+
+
+@rust(
+    py=False,
+    dependencies=[rust_dependency("numpy", version="0.29")],
+    imports=["numpy::PyReadonlyArray1", "numpy::datetime::{Datetime, units::Microseconds}"],
+)
+def count_nat(
+    t: Annotated[npt.NDArray[np.datetime64], "PyReadonlyArray1<'py, Datetime<Microseconds>>"],
+) -> int:  # ty: ignore[empty-body]
+    """
+    // numpy stores NaT as i64::MIN
+    Ok(t.as_array().iter().filter(|&&ti| i64::from(ti) == i64::MIN).count() as i32)
     """
 
 
@@ -160,3 +211,62 @@ def test_pandas_index_as_list() -> None:
     assert len(idx) == 25
     assert hours_since_start(list(idx)) == [float(h) for h in range(25)]
     assert hours_since_start([]) == []
+
+
+def test_date_round_trips() -> None:
+    assert next_day(date(2026, 10, 21)) == date(2026, 10, 22)
+    assert next_day(date(2028, 2, 28)) == date(2028, 2, 29)
+    assert next_day(date(2026, 12, 31)) == date(2027, 1, 1)
+
+
+def test_datetime_passed_as_date_loses_time() -> None:
+    # datetime subclasses date, so pyo3 accepts it and reads only the date fields
+    result = next_day(datetime(2026, 10, 21, 18, 30, tzinfo=UTC))
+    assert type(result) is date
+    assert result == date(2026, 10, 22)
+
+
+def test_time_round_trips() -> None:
+    assert add_minutes(time(12, 0, 0, 123456), 0) == time(12, 0, 0, 123456)
+    assert add_minutes(time(23, 30), 45) == time(0, 15)
+
+
+def test_time_drops_tzinfo() -> None:
+    # a time-of-day offset can't account for DST, and pyo3 reads only the clock fields
+    result = add_minutes(time(12, tzinfo=UTC), 0)
+    assert result == time(12)
+    assert result.tzinfo is None
+
+
+@pytest.mark.parametrize("tz", [UTC, timezone(timedelta(hours=5, minutes=30)), ZoneInfo("Europe/London")])
+def test_tzinfo_round_trips(tz: timezone | ZoneInfo) -> None:
+    assert zone_of(datetime(2026, 7, 1, tzinfo=tz)) == tz
+
+
+def test_tzinfo_argument() -> None:
+    t = datetime(2026, 7, 1, 12, tzinfo=UTC)
+    result = in_zone(t, ZoneInfo("Europe/London"))
+    assert result == t
+    assert result.tzinfo == ZoneInfo("Europe/London")
+    assert (result.hour, result.tzname()) == (13, "BST")
+
+
+# pd.NaT is a datetime subclass with no data, so pyo3 accepts it as a datetime and then fails reading its fields.
+# It isn't None, so `datetime | None` doesn't help either: replace NaT with None first, or pass a datetime64 array
+def test_nat_rejected() -> None:
+    with pytest.raises(TypeError, match="non-None tzinfo"):
+        shift(pd.NaT, _td())  # ty: ignore[invalid-argument-type]
+    with pytest.raises(TypeError, match="cannot be interpreted as an integer"):
+        next_day(pd.NaT)  # ty: ignore[invalid-argument-type]
+
+
+def test_nat_in_list_rejected_until_replaced_with_none() -> None:
+    idx = pd.DatetimeIndex([_ts("2026-01-01", tz="UTC"), pd.NaT, _ts("2026-01-02", tz="UTC")])
+    with pytest.raises(TypeError, match="non-None tzinfo"):
+        count_missing(list(idx))
+    assert count_missing(list(idx.astype(object).where(idx.notna(), None))) == 1
+
+
+def test_nat_in_datetime64_array_is_i64_min() -> None:
+    idx = pd.DatetimeIndex([_ts("2026-01-01", tz="UTC"), pd.NaT, pd.NaT])
+    assert count_nat(idx.as_unit("us").values) == 2

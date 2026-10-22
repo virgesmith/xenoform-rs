@@ -145,6 +145,9 @@ class Thing:
 | `...` | `&Bound<'py, PyEllipsis>` |
 | `datetime` | `jiff::Zoned` |
 | `timedelta` | `jiff::SignedDuration` |
+| `date` | `jiff::civil::Date` |
+| `time` | `jiff::civil::Time` |
+| `tzinfo` | `jiff::tz::TimeZone` |
 
 Nested generics recurse: `dict[str, list[float]]` → `HashMap<String, Vec<f64>>`.
 
@@ -204,6 +207,16 @@ its reference stripped (you get `Bound<'py, T>` back, since you can't return a b
   Either way, add the `jiff` crate with `rust_dependency("jiff", version="0.2")`. Nanoseconds in
   a `pd.Timestamp` are dropped. Known pyo3 0.29.3 bug: a `Zoned` *returned* in the repeated hour
   after clocks go back comes back an hour early (`fold` is lost).
+- **`date`, `time` and `tzinfo` drop information silently.** A `datetime` passed as a `date`
+  loses its time (`datetime` subclasses `date`), and a `time`'s `tzinfo` and `fold` are
+  dropped. `tzinfo` (→ `jiff::tz::TimeZone`) accepts `ZoneInfo`, `timezone.utc` and fixed
+  offsets, and comes back as the same kind.
+- **`pd.NaT` raises `TypeError` for every datetime mapping, even `datetime | None`** — `NaT` is a
+  `datetime` subclass with no data, not `None`. For a list, replace it with `None` and take
+  `list[datetime | None]`: `list(idx.astype(object).where(idx.notna(), None))`. For speed, pass
+  `idx.as_unit("us").values` as
+  `Annotated[npt.NDArray[np.datetime64], "PyReadonlyArray1<'py, Datetime<Microseconds>>"]`
+  (imports `numpy::datetime::{Datetime, units::Microseconds}`), where `NaT` is `i64::MIN`.
 - **No linking to external prebuilt binaries.** Only source (the docstring plus any `modules=`
   files) is compiled.
 - **Extra `modules=` files are copied into the crate** — editing them triggers a rebuild just

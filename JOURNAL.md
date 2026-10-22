@@ -22,6 +22,36 @@ Entry template:
 
 ---
 
+## 2026-10-22 — `date`, `time` and `tzinfo` map to jiff; `pd.NaT` (#13) (#39)
+
+**Why** — after #38, `datetime` and `timedelta` had jiff mappings but `date`, `time` and `tzinfo` had none, so a
+function taking a date or a zone needed an override. pyo3's `jiff-02` feature already converts all three, both ways.
+
+**What** — `date` → `jiff::civil::Date`, `time` → `jiff::civil::Time`, `tzinfo` → `jiff::tz::TimeZone`. `pd.NaT`
+handling documented and tested. README, SKILL.md and tests updated.
+
+**Design decisions**
+- Civil types for `date` and `time` — neither has a zone, so jiff's zoneless types are the honest match. Rejected:
+  `date` → `Zoned` at midnight, which invents a zone and a time.
+- Silent loss is documented and pinned by tests, not rejected — pyo3 accepts a `datetime` as a `date` (subclass) and
+  reads only a `time`'s clock fields. Rejecting either would need a custom conversion, and a time-of-day offset can't
+  account for DST anyway.
+- `tzinfo` → `TimeZone` — lets a zone be an argument (e.g. convert to a caller's zone). pyo3 maps `ZoneInfo` by IANA
+  key and other tzinfos by fixed offset, and returns UTC/IANA/fixed zones as `timezone.utc`/`ZoneInfo`/`timezone`.
+- `pd.NaT` documented and tested, not converted — it's a `datetime` subclass with no data, so every mapping raises a
+  `TypeError` (`Zoned`: "non-None tzinfo"; civil/`Date`: "'float' cannot be interpreted as an integer"), and it isn't
+  `None`, so `Option<_>` doesn't catch it. Documented routes: replace with `None` and take `list[datetime | None]`, or
+  pass a `datetime64` array, where `NaT` is `i64::MIN`. Rejected: replacing `NaT` with `None` in the Python call
+  wrapper (walks every argument and list element in Python on every call, and needs knowledge of pandas); generating a
+  NaT-aware Rust wrapper type (breaks `T | None` → `Option<T>`, injects code into every module) — revisit only if NaT
+  in lists proves common.
+- Pyo3 feature passthrough (e.g. `chrono`) kept separate — it's a new decorator parameter and needs its own design.
+
+**Follow-ups**
+- Documented overrides: `jiff::Timestamp` for aware datetimes (avoids the fold bug), numpy `datetime64` arrays
+  (fast pandas indexes, nanosecond precision; the `NaT` test already uses one).
+- Report the pyo3 fold bug upstream.
+
 ## 2026-10-21 — `Annotated` overrides skip unmapped type parameters (#38)
 
 **Why** — an override is meant to be the whole rust type, but `RustTypeTree` still translated the python type's
