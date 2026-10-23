@@ -22,6 +22,44 @@ Entry template:
 
 ---
 
+## 2026-10-23 — pyo3 0.30; `NUMPY_CRATE`; version 0.2.0 (#42)
+
+**Why** — pyo3 0.30 is out. The numpy crate has to move with it: cargo can't link two pyo3 versions into one module,
+so every `rust_dependency("numpy", version="0.29")` in the tests, examples and docs had to change too, and users'
+own code would need the same edit at every future bump.
+
+**What**
+- The default `pyo3_version` is now 0.30.
+- New public constant `NUMPY_CRATE`: the numpy dependency entry at the minor version of the configured pyo3 version.
+  The tests, examples, README and SKILL use it in place of a pinned numpy.
+- Version 0.2.0. User code that pins numpy 0.29 no longer builds, which is a breaking change. The README's
+  "`pyo3` version" section says how to migrate.
+- Under 0.30, `pd.NaT` passed as a `date` (or civil type) is silently read as 0001-01-01 on every build. Under 0.29
+  that happened only on free-threaded builds, and the stable ABI build raised `TypeError`. The test now asserts the
+  same result on both builds, and the README and SKILL warnings no longer say the default build is safe.
+- The fold bug (xfail `test_repeated_hour_keeps_fold`) is still present in 0.30. The comments now say so.
+- The datetime64 route in the docs and tests uses `idx.tz_convert(None).as_unit("us").to_numpy()`: pandas 3.1 (pulled
+  in by the lock refresh) deprecates `.values` dropping the timezone of a tz-aware `DatetimeIndex`.
+- The pre-commit hooks (uv, ruff, ty) and the lockfile were refreshed as well.
+
+**Design decisions**
+- *A constant, not a function or an automatic dependency.* Rejected: adding numpy whenever a signature mentions
+  ndarrays. That would special-case types in the translation, which AGENTS.md rules out, and it can't see numpy
+  types that are only used in the Rust body. A constant also reads like any other dependency entry.
+- *Major.minor of the pyo3 version, not the version as given.* numpy's minor versions track pyo3's, but its patch
+  versions are independent, so `XENOFORM_RS_PYO3_VERSION=0.30.2` would ask for `numpy ^0.30.2`, which may not exist.
+  Truncating covers that. A pyo3 requirement with an operator (e.g. `=0.30.1`) is passed through as `=0.30`.
+- *Evaluated at import*, from the cached `get_config()`, like the rest of the config: changing
+  `XENOFORM_RS_PYO3_VERSION` after `xenoform_rs` is imported has no effect on either.
+- *Named `NUMPY_CRATE`*, not `NUMPY`, so it isn't mistaken for something about the Python package.
+
+**Follow-ups**
+- Remove the fold xfail once pyo3 fixes the conversion (it's strict, so the fix will show up as a failure).
+- If other pyo3-coupled crates become common, a general way to version them may be worth it. `NUMPY_CRATE` is the
+  only one for now.
+
+---
+
 ## 2026-10-22 — Lock the whole build with `filelock`, replacing atomic writes (#40)
 
 **Why** — the atomic writes of #37 stopped a concurrent build reading a half-written file, but left the gaps listed in

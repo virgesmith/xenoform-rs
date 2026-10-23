@@ -6,7 +6,7 @@ from typing import Annotated
 import numpy as np
 import numpy.typing as npt
 
-from xenoform_rs import NUMPY, rust, rust_dependency
+from xenoform_rs import NUMPY_CRATE, rust, rust_dependency
 
 
 def calc_dist_matrix_py(p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
@@ -16,7 +16,7 @@ def calc_dist_matrix_py(p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
 
 @rust(
     dependencies=[
-        NUMPY,
+        NUMPY_CRATE,
         rust_dependency("rayon", version="1.12"),
     ],
     imports=[
