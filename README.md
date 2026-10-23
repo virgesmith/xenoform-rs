@@ -111,12 +111,12 @@ from typing import Annotated
 import numpy as np
 import numpy.typing as npt
 
-from xenoform_rs import rust, rust_dependency
+from xenoform_rs import NUMPY rust, rust_dependency
 
 
 @rust(
     py=False,  # we don't require the python context as the first argument (we aren't constructing any python objects or calling any python APIs)
-    dependencies=[rust_dependency("numpy", version="0.29")],  # declare we need the numpy crate
+    dependencies=[NUMPY],  # declare we need the numpy crate
     imports=["numpy::PyReadonlyArrayDyn"],  # import the type we need
 )
 def array_nelems(a: npt.NDArray[np.int64]) -> Annotated[int, "usize"]:
@@ -156,7 +156,7 @@ installed `xenoform-rs` package, so it always matches the version in use.
 name | type | default | description
 ---- | ---- | ------- | -----------
 `py` | `bool` | `True` | Pass the python context as the first argument. Necessary when (e.g.) creating python objects
-`dependencies` | `list[str] \| None` | `None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.29")]`
+`dependencies` | `list[str] \| None` | `None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.30")]`*.
 `modules` | `list[Path \| str] \| None` | `None` | Sources for additional modules
 `imports` | `list[str] \| None` | `None` | Additional imports, e.g. `imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"]`
 `module_name` | `str \| None` | `None` | Override the default one-to-one mapping between python files and rust modules, e.g. when the python source file is a reserved rust keyword
@@ -164,6 +164,9 @@ name | type | default | description
 `edition` | `str` | `"2024"` | The rust edition
 `help` | `str \| None` | `None` | Docstring for the function
 `constants` | `list[str] \| None` | `None` | Names of python variables to define as module-level rust constants, optionally with a rust type, e.g. `constants=["MAGIC_NUMBER", "BIG: u64"]`. See [Constants](#constants)
+
+&ast; The numpy crate is in lockstep with pyo3, so the convenience value `NUMPY` is provided,
+
 
 ## Performance
 
@@ -201,7 +204,7 @@ such objects via their python API:
 
 ```py
 @rust(
-    dependencies=[rust_dependency("numpy", version="0.29")],
+    dependencies=[NUMPY],
     imports=["numpy::{PyArray1, PyArrayMethods}", "pyo3::types::{PyDict, PyAnyMethods}"],
     module_name="loop_rs",  # override as "loop" is a rust keyword
     profile={"strip": "symbols"},
@@ -274,7 +277,7 @@ than exploiting symmetry, but the embarrassingly parallel scaling more than pays
 ```py
 @rust(
     dependencies=[
-        rust_dependency("numpy", version="0.29"),
+        NUMPY,
         rust_dependency("rayon", version="1.12"),
     ],
     imports=[

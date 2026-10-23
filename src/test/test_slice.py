@@ -5,7 +5,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from xenoform_rs import rust, rust_dependency
+from xenoform_rs import NUMPY, rust
 
 
 @rust(py=False, imports=["pyo3::types::PySlice"])
@@ -25,7 +25,7 @@ def parse_slice(length: int, s: slice) -> list[int]:  # ty: ignore[empty-body]
 
 @rust(
     py=False,
-    dependencies=[rust_dependency("numpy", version="0.29")],
+    dependencies=[NUMPY],
     imports=[
         "numpy::{PyArrayDyn, PyUntypedArrayMethods}",
         "pyo3::types::PyTuple",

@@ -3,13 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from xenoform_rs import RustConfigError, rust_dependency, utils
+from xenoform_rs import NUMPY, RustConfigError, rust_dependency, utils
+from xenoform_rs.config import get_config
 from xenoform_rs.errors import RustModuleError
 
 
 def test_rust_dependency() -> None:
     assert rust_dependency("num", "*") == 'num = "*"'
-    assert rust_dependency("numpy", version="0.29") == 'numpy = { version = "0.29" }'
+    assert f'numpy = {{ version = "{get_config().pyo3_version}" }}' == NUMPY
     assert (
         rust_dependency("pyo3", version="0.29", features=["extension-module", "abi3-py313"])
         == """pyo3 = { version = "0.29", features = ['extension-module', 'abi3-py313'] }"""

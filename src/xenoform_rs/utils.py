@@ -161,6 +161,10 @@ def rust_dependency(*args: str, **kwargs: Any) -> str:
             raise RustConfigError("rust_dependency requires a name and either a version string or a keyword parameters")
 
 
+NUMPY = rust_dependency("numpy", version=get_config().pyo3_version)
+""" Convenience definition for the numpy crate: its version is in lockstep with pyo3 """
+
+
 def python_abi() -> str:
     """The interpreter's extension-module ABI tag.
 

@@ -106,7 +106,7 @@ class Thing:
 | name | type | default | description |
 |------|------|---------|--------------|
 | `py` | `bool` | `True` | Pass the python context as the first argument (`py: Python<'py>`). Needed when creating Python objects or calling Python APIs from Rust. |
-| `dependencies` | `list[str] \| None` | `None` | Rust crate dependencies. Use `rust_dependency(name, version=..., features=[...])` to build entries, e.g. `rust_dependency("numpy", version="0.29")`. |
+| `dependencies` | `list[str] \| None` | `None` | Rust crate dependencies. Use `rust_dependency(name, version=..., features=[...])` to build entries, or `NUMPY`. |
 | `modules` | `list[Path \| str] \| None` | `None` | Extra Rust source files to link in. Modifying one triggers a rebuild. |
 | `imports` | `list[str] \| None` | `None` | Extra `use` imports, e.g. `"numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"`. |
 | `module_name` | `str \| None` | `None` | Override the default python-file-to-rust-module name mapping — needed when the source file's name is a Rust keyword (e.g. a file called `loop.py` needs `module_name="loop_rs"`). |

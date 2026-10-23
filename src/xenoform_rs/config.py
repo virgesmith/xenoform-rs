@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class XenoformRsConfig(BaseSettings):
     disable_ft: str | None = None
     extmodule_root: Path = Path("./ext")
-    pyo3_version: str = "0.29"
+    pyo3_version: str = "0.30"
     verbose: str | None = None
     build_timeout: PositiveInt = 300
 
