@@ -12,7 +12,7 @@ def test_config() -> None:
     config = get_config()
     assert config.disable_ft is os.getenv("XENOFORM_RS_DISABLE_FT")
     assert config.extmodule_root == Path(os.getenv("XENOFORM_RS_EXTMODULE_ROOT", "./ext"))
-    assert config.pyo3_version == os.getenv("XENOFORM_RS_PYO3_VERSION", "0.29")
+    assert config.pyo3_version == os.getenv("XENOFORM_RS_PYO3_VERSION", "0.30")
     assert config.verbose is os.getenv("XENOFORM_RS_VERBOSE")
     assert config.build_timeout == int(os.getenv("XENOFORM_RS_BUILD_TIMEOUT", "300"))
 

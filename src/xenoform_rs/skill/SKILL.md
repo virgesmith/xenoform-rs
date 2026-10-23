@@ -106,7 +106,7 @@ class Thing:
 | name | type | default | description |
 |------|------|---------|--------------|
 | `py` | `bool` | `True` | Pass the python context as the first argument (`py: Python<'py>`). Needed when creating Python objects or calling Python APIs from Rust. |
-| `dependencies` | `list[str] \| None` | `None` | Rust crate dependencies. Use `rust_dependency(name, version=..., features=[...])` to build entries, e.g. `rust_dependency("numpy", version="0.29")`. |
+| `dependencies` | `list[str] \| None` | `None` | Rust crate dependencies. Use `rust_dependency(name, version=..., features=[...])` to build entries. For numpy use `NUMPY_CRATE`, which matches pyo3's version: a separately pinned numpy that pulls in a different pyo3 won't build. |
 | `modules` | `list[Path \| str] \| None` | `None` | Extra Rust source files to link in. Modifying one triggers a rebuild. |
 | `imports` | `list[str] \| None` | `None` | Extra `use` imports, e.g. `"numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"`. |
 | `module_name` | `str \| None` | `None` | Override the default python-file-to-rust-module name mapping — needed when the source file's name is a Rust keyword (e.g. a file called `loop.py` needs `module_name="loop_rs"`). |
@@ -205,18 +205,18 @@ its reference stripped (you get `Bound<'py, T>` back, since you can't return a b
       """
   ```
   Either way, add the `jiff` crate with `rust_dependency("jiff", version="0.2")`. Nanoseconds in
-  a `pd.Timestamp` are dropped. Known pyo3 0.29.3 bug: a `Zoned` *returned* in the repeated hour
-  after clocks go back comes back an hour early (`fold` is lost).
+  a `pd.Timestamp` are dropped. Known pyo3 bug (0.29.3, still in 0.30): a `Zoned` *returned* in
+  the repeated hour after clocks go back comes back an hour early (`fold` is lost).
 - **`date`, `time` and `tzinfo` drop information silently.** A `datetime` passed as a `date`
   loses its time (`datetime` subclasses `date`), and a `time`'s `tzinfo` and `fold` are
   dropped. `tzinfo` (→ `jiff::tz::TimeZone`) accepts `ZoneInfo`, `timezone.utc` and fixed
   offsets, and comes back as the same kind.
 - **Never pass `pd.NaT`: it isn't `None`, so `datetime | None` doesn't catch it** — `NaT` is a
   `datetime` subclass with no data. It raises `TypeError` for `datetime` and `timedelta`. As a
-  `date` or civil type it raises under the default build but, **under free-threaded Python, is
-  silently read as 0001-01-01** (no stable ABI, so pyo3 reads its C fields). For a list, replace it with `None` and take
-  `list[datetime | None]`: `list(idx.astype(object).where(idx.notna(), None))`. For speed, pass
-  `idx.as_unit("us").values` as
+  `date` or civil type it **is silently read as 0001-01-01** (its underlying date fields). For a
+  list, replace it with `None` and take `list[datetime | None]`:
+  `list(idx.astype(object).where(idx.notna(), None))`. For speed, pass
+  `idx.tz_convert(None).as_unit("us").to_numpy()` (drop `tz_convert(None)` if naive) as
   `Annotated[npt.NDArray[np.datetime64], "PyReadonlyArray1<'py, Datetime<Microseconds>>"]`
   (imports `numpy::datetime::{Datetime, units::Microseconds}`), where `NaT` is `i64::MIN`.
 - **No linking to external prebuilt binaries.** Only source (the docstring plus any `modules=`
@@ -228,7 +228,7 @@ its reference stripped (you get `Bound<'py, T>` back, since you can't return a b
 
 | Variable | Effect |
 |----------|--------|
-| `XENOFORM_RS_PYO3_VERSION` | Override the pyo3 version (default and only supported: 0.29). |
+| `XENOFORM_RS_PYO3_VERSION` | Override the pyo3 version (default and only supported: 0.30). `NUMPY_CRATE` follows it at the minor version. |
 | `XENOFORM_RS_EXTMODULE_ROOT` | Move compiled modules out of the default `ext/` subdirectory. Avoid path characters (space, hyphen) invalid in a Python module name. |
 | `XENOFORM_RS_VERBOSE` | Any value (including empty) turns on INFO-level logging of compile/check/import steps with timings, on xenoform-rs's own logger only — never touches `logging.basicConfig`/root logging. |
 | `XENOFORM_RS_DISABLE_FT` | Disable building free-threaded (GIL-free) extension modules under a free-threaded interpreter. |

@@ -77,11 +77,11 @@ lost). See [test_datetime.py](src/test/test_datetime.py).
 `date` silently loses its time (`datetime` subclasses `date`), and a `time`'s `tzinfo` and `fold` are silently dropped.
 `tzinfo` accepts `ZoneInfo`, `timezone.utc` and fixed offsets, and is returned as the same kind.
 - `pd.NaT` isn't `None`, so `datetime | None` doesn't catch it. It raises `TypeError` for `datetime` and `timedelta`.
-For `date` and civil types it raises under the default build, but **under free-threaded Python it is silently read as
-0001-01-01** (free-threaded builds can't use the stable ABI, so pyo3 reads `NaT`'s underlying C fields). For a list,
+For `date` and civil types it **is silently read as 0001-01-01** (`NaT`'s underlying date fields). For a list,
 replace it with `None` and use `list[datetime | None]`: e.g. `list(idx.astype(object).where(idx.notna(), None))`. For
 speed, pass a `datetime64` array instead (`Annotated[npt.NDArray[np.datetime64], "PyReadonlyArray1<'py,
-Datetime<Microseconds>>"]`, with `idx.as_unit("us").values`), where `NaT` is `i64::MIN`.
+Datetime<Microseconds>>"]`, with `idx.tz_convert(None).as_unit("us").to_numpy()`, dropping `tz_convert(None)` for a
+naive index), where `NaT` is `i64::MIN`.
 - if additional modules are specified, the files are copied into the crate. Modifications to additional modules will
 trigger a rebuild.
 - no support for compound types, other than optional (`T | None`) (This would require building support for rust enums).
@@ -111,12 +111,12 @@ from typing import Annotated
 import numpy as np
 import numpy.typing as npt
 
-from xenoform_rs import rust, rust_dependency
+from xenoform_rs import NUMPY_CRATE, rust
 
 
 @rust(
     py=False,  # we don't require the python context as the first argument (we aren't constructing any python objects or calling any python APIs)
-    dependencies=[rust_dependency("numpy", version="0.29")],  # declare we need the numpy crate
+    dependencies=[NUMPY_CRATE],  # declare we need the numpy crate, at the version matching pyo3
     imports=["numpy::PyReadonlyArrayDyn"],  # import the type we need
 )
 def array_nelems(a: npt.NDArray[np.int64]) -> Annotated[int, "usize"]:
@@ -156,7 +156,7 @@ installed `xenoform-rs` package, so it always matches the version in use.
 name | type | default | description
 ---- | ---- | ------- | -----------
 `py` | `bool` | `True` | Pass the python context as the first argument. Necessary when (e.g.) creating python objects
-`dependencies` | `list[str] \| None` | `None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("numpy", version="0.29")]`
+`dependencies` | `list[str] \| None` | `None` | Rust package dependencies, the `rust_dependency` convenience function can be used to specify dependency parameters, e.g. `dependencies=[rust_dependency("rayon", version="1.12")]`. For numpy, use `NUMPY_CRATE` (see [`pyo3` version](#pyo3-version))
 `modules` | `list[Path \| str] \| None` | `None` | Sources for additional modules
 `imports` | `list[str] \| None` | `None` | Additional imports, e.g. `imports=["numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2}"]`
 `module_name` | `str \| None` | `None` | Override the default one-to-one mapping between python files and rust modules, e.g. when the python source file is a reserved rust keyword
@@ -201,7 +201,7 @@ such objects via their python API:
 
 ```py
 @rust(
-    dependencies=[rust_dependency("numpy", version="0.29")],
+    dependencies=[NUMPY_CRATE],
     imports=["numpy::{PyArray1, PyArrayMethods}", "pyo3::types::{PyDict, PyAnyMethods}"],
     module_name="loop_rs",  # override as "loop" is a rust keyword
     profile={"strip": "symbols"},
@@ -274,7 +274,7 @@ than exploiting symmetry, but the embarrassingly parallel scaling more than pays
 ```py
 @rust(
     dependencies=[
-        rust_dependency("numpy", version="0.29"),
+        NUMPY_CRATE,
         rust_dependency("rayon", version="1.12"),
     ],
     imports=[
@@ -693,7 +693,12 @@ subsequent mutation will not be reflected in rust code.
 
 ### `pyo3` version
 
-The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default - and only supported version - is currently 0.29. Using a different version is not guaranteed to work, and may require overrides for all argument and return types.
+The `pyo3` version can be overridden with the environment variable `XENOFORM_RS_PYO3_VERSION`. The default - and only supported version - is currently 0.30. Using a different version is not guaranteed to work, and may require overrides for all argument and return types.
+
+The `numpy` crate must be at the same minor version as pyo3: cargo can't link two pyo3 versions into one module. Use
+`NUMPY_CRATE` rather than pinning numpy yourself, as it follows the pyo3 version (including an override). Code written
+for xenoform-rs 0.1.x with `rust_dependency("numpy", version="0.29")` fails to build under 0.2, which uses pyo3 0.30;
+replace it with `NUMPY_CRATE`.
 
 ### Location of Extension Modules
 

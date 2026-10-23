@@ -161,6 +161,17 @@ def rust_dependency(*args: str, **kwargs: Any) -> str:
             raise RustConfigError("rust_dependency requires a name and either a version string or a keyword parameters")
 
 
+def _major_minor(version: str) -> str:
+    """Truncate a version to major.minor, e.g. 0.30.1 -> 0.30"""
+    return ".".join(version.split(".")[:2])
+
+
+# numpy's minor versions track pyo3's, but its patch versions don't, so a patch-level pyo3 override would ask for a numpy
+# release that may not exist
+NUMPY_CRATE = rust_dependency("numpy", version=_major_minor(get_config().pyo3_version))
+"""Convenience definition for the numpy crate, at the minor version matching pyo3"""
+
+
 def python_abi() -> str:
     """The interpreter's extension-module ABI tag.
 

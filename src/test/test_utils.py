@@ -1,15 +1,16 @@
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
-from xenoform_rs import RustConfigError, rust_dependency, utils
+from xenoform_rs import NUMPY_CRATE, RustConfigError, rust_dependency, utils
 from xenoform_rs.errors import RustModuleError
 
 
 def test_rust_dependency() -> None:
     assert rust_dependency("num", "*") == 'num = "*"'
-    assert rust_dependency("numpy", version="0.29") == 'numpy = { version = "0.29" }'
+    assert rust_dependency("numpy", version="0.30") == 'numpy = { version = "0.30" }'
     assert (
         rust_dependency("pyo3", version="0.29", features=["extension-module", "abi3-py313"])
         == """pyo3 = { version = "0.29", features = ['extension-module', 'abi3-py313'] }"""
@@ -19,6 +20,13 @@ def test_rust_dependency() -> None:
         rust_dependency("numpy")
     with pytest.raises(RustConfigError):
         rust_dependency("numpy", "*", features=["blah"])
+
+
+def test_numpy_crate_tracks_pyo3_minor_version() -> None:
+    assert utils._major_minor("0.30") == "0.30"
+    assert utils._major_minor("0.30.1") == "0.30"
+    pyo3_version = os.getenv("XENOFORM_RS_PYO3_VERSION", "0.30")
+    assert f'numpy = {{ version = "{utils._major_minor(pyo3_version)}" }}' == NUMPY_CRATE
 
 
 def test_rustfmt_failure(monkeypatch: pytest.MonkeyPatch) -> None:

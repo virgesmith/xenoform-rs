@@ -13,7 +13,7 @@ from .errors import (
     RustWarning,
     XenoformRsError,
 )
-from .utils import rust_dependency
+from .utils import NUMPY_CRATE, rust_dependency
 
 
 def _check_rust_installed() -> None:
@@ -30,6 +30,7 @@ _check_rust_installed()
 
 
 __all__ = [
+    "NUMPY_CRATE",
     "AnnotationError",
     "CompilationError",
     "RustConfigError",

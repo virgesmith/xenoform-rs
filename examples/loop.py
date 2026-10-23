@@ -6,7 +6,7 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 
-from xenoform_rs import rust, rust_dependency
+from xenoform_rs import NUMPY_CRATE, rust
 
 
 def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
@@ -23,7 +23,7 @@ def calc_balances_py(data: pd.Series, rate: float) -> pd.Series:
 
 
 @rust(
-    dependencies=[rust_dependency("numpy", version="0.29")],
+    dependencies=[NUMPY_CRATE],
     imports=["numpy::{PyArray1, PyArrayMethods}", "pyo3::types::{PyDict, PyAnyMethods}"],
     module_name="loop_rs",  # override as "loop" is a rust keyword
     profile={"strip": "symbols"},

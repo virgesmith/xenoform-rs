@@ -3,13 +3,13 @@ from typing import Annotated
 import numpy as np
 import numpy.typing as npt
 
-from xenoform_rs import rust, rust_dependency
+from xenoform_rs import NUMPY_CRATE, rust
 
 
 # PyArrayDyn must be passed by bound ref
 @rust(
     py=False,
-    dependencies=[rust_dependency("numpy", version="0.29")],
+    dependencies=[NUMPY_CRATE],
     imports=["numpy::{PyArrayDyn, PyArrayMethods}"],
 )
 def by_ref(a: Annotated[npt.NDArray[np.float64], "&Bound<'py, PyArrayDyn<f64>>"]) -> None:
@@ -32,7 +32,7 @@ def test_numpy_byref() -> None:
 # PyReadonlyArrayDyn can be passed (moved?) by value but data can be mutated (through a shallow copy?)
 @rust(
     py=False,
-    dependencies=[rust_dependency("numpy", version="0.29")],
+    dependencies=[NUMPY_CRATE],
     imports=["numpy::PyReadonlyArrayDyn"],
 )
 def by_val(a: npt.NDArray[np.float64]) -> None:

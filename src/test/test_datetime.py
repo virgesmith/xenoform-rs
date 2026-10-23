@@ -1,4 +1,3 @@
-import sysconfig
 from datetime import UTC, date, datetime, time, timedelta, timezone, tzinfo
 from typing import Annotated
 from zoneinfo import ZoneInfo
@@ -8,7 +7,7 @@ import numpy.typing as npt
 import pandas as pd
 import pytest
 
-from xenoform_rs import rust, rust_dependency
+from xenoform_rs import NUMPY_CRATE, rust, rust_dependency
 
 JIFF = rust_dependency("jiff", version="0.2")
 
@@ -97,7 +96,7 @@ def count_missing(t: list[datetime | None]) -> int:  # ty: ignore[empty-body]
 
 @rust(
     py=False,
-    dependencies=[rust_dependency("numpy", version="0.29")],
+    dependencies=[NUMPY_CRATE],
     imports=["numpy::PyReadonlyArray1", "numpy::datetime::{Datetime, units::Microseconds}"],
 )
 def count_nat(
@@ -136,8 +135,8 @@ def test_named_zone_follows_dst_rules() -> None:
     assert result.astimezone(UTC) - t.astimezone(UTC) == timedelta(hours=3)
 
 
-# pyo3 0.29.3's Zoned -> datetime conversion never sets fold=1: its fold() compares against the offset *after* the
-# preceding transition. jiff computes 01:30 GMT correctly, but python reads fold=0 as 01:30 BST, an hour early.
+# pyo3's Zoned -> datetime conversion (still in 0.30) never sets fold=1: its fold() compares against the offset *after*
+# the preceding transition. jiff computes 01:30 GMT correctly, but python reads fold=0 as 01:30 BST, an hour early.
 # Remove the xfail once pyo3 fixes the fold calculation (strict, so the fix is noticed).
 @pytest.mark.xfail(strict=True, reason="pyo3 jiff conversion loses fold in the repeated hour")
 def test_repeated_hour_keeps_fold() -> None:
@@ -259,15 +258,10 @@ def test_nat_rejected_as_zoned() -> None:
         shift(pd.NaT, _td())  # ty: ignore[invalid-argument-type]
 
 
-# date and civil types read the date fields, and what they get depends on the build. Under the stable ABI (abi3, the
-# default) pyo3 reads attributes, which are nan for NaT, and fails. Free-threaded builds can't use the stable ABI, so
-# pyo3 reads NaT's underlying C fields, which hold 0001-01-01: NaT is silently read as that date
-def test_nat_as_date_depends_on_abi() -> None:
-    if sysconfig.get_config_var("Py_GIL_DISABLED"):
-        assert next_day(pd.NaT) == date(1, 1, 2)  # ty: ignore[invalid-argument-type]
-    else:
-        with pytest.raises(TypeError, match="cannot be interpreted as an integer"):
-            next_day(pd.NaT)  # ty: ignore[invalid-argument-type]
+# date and civil types read NaT's date fields, which hold 0001-01-01, so NaT is silently read as that date. Under pyo3
+# 0.29 this happened only on free-threaded builds, and the stable ABI build raised TypeError. Since 0.30 every build does it
+def test_nat_silently_read_as_date() -> None:
+    assert next_day(pd.NaT) == date(1, 1, 2)  # ty: ignore[invalid-argument-type]
 
 
 def test_nat_in_list_rejected_until_replaced_with_none() -> None:
@@ -279,4 +273,4 @@ def test_nat_in_list_rejected_until_replaced_with_none() -> None:
 
 def test_nat_in_datetime64_array_is_i64_min() -> None:
     idx = pd.DatetimeIndex([_ts("2026-01-01", tz="UTC"), pd.NaT, pd.NaT])
-    assert count_nat(idx.as_unit("us").values) == 2
+    assert count_nat(idx.tz_convert(None).as_unit("us").to_numpy()) == 2
