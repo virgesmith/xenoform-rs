@@ -28,7 +28,7 @@ Here's what happens automatically when you import a module with `@rust`-decorate
 The Rust functions execute directly with minimal overhead.
 
 **Change detection:**
-Each module's hash covers its generated source code, its Cargo.toml and any additional rust modules. On first call,
+Each module's hash covers its generated source code, its Cargo.toml, any link settings and any additional rust modules. On first call,
 xenoform-rs compares it with the hash recorded when the module was last built, and rebuilds the module if they differ.
 Each interpreter ABI (Python version, and whether the build is GIL-enabled or free-threaded) has its own binary and
 recorded hash, so switching Python versions or GIL/free-threaded builds triggers a build the first time, and switching
@@ -59,6 +59,7 @@ NB type annotations for these types are still useful for python type checkers. S
 - Callable types are supported both as arguments and return values. See [below](#callable-types).
 - Optional (`T | None`) types are supported, mapping to `Option<T>`
 - Can link to separate rust sources, see [test_modules.py](src/test/test_modules.py) for details.
+- Can link to prebuilt static or shared libraries, see [Linking to external libraries](#linking-to-external-libraries).
 - By [default](#free-threaded-interpreter), supports parallel execution when the python interpreter is free-threaded.
 
 Caveats & points to note:
@@ -87,7 +88,8 @@ trigger a rebuild.
 - no support for compound types, other than optional (`T | None`) (This would require building support for rust enums).
 Use a type override to a generic python type e.g. `Annotated[int | float, "&Bound<'py, PyAny>"]` or coerce to a single
 rust type e.g. `Annotated[int | float, "f64"]`.
-- no support currently for linking to external prebuilt binaries
+- rebuilding an external library that a module links to doesn't trigger a rebuild of the module (see
+[Linking to external libraries](#linking-to-external-libraries)).
 - due to restrictions arising from linguistic differences, xenoform-rs will likely never be as functionally complete
 than its C++ sister, [xenoform](https://pypi.org/project/xenoform/)
 
@@ -164,6 +166,9 @@ name | type | default | description
 `edition` | `str` | `"2024"` | The rust edition
 `help` | `str \| None` | `None` | Docstring for the function
 `constants` | `list[str] \| None` | `None` | Names of python variables to define as module-level rust constants, optionally with a rust type, e.g. `constants=["MAGIC_NUMBER", "BIG: u64"]`. See [Constants](#constants)
+`link_search` | `list[Path \| str] \| None` | `None` | Directories to search for external libraries. Relative paths are relative to the working directory. See [Linking to external libraries](#linking-to-external-libraries)
+`link_libs` | `list[str] \| None` | `None` | External libraries to link, in rustc's [`-l`](https://doc.rust-lang.org/rustc/command-line-arguments.html#-l-link-the-generated-crate-to-a-native-library) form, e.g. `"static=foo"` or `"dylib=foo"`
+`link_args` | `list[str] \| None` | `None` | Raw arguments for the linker, e.g. `"-Wl,-rpath,/opt/foo/lib"`
 
 ## Performance
 
@@ -688,6 +693,35 @@ extension module. Declaring the same constant identically in several functions i
 different values is a compilation error (E0428).
 - the mechanism is *only intended for immutable values*: the value is captured when the function is decorated, any
 subsequent mutation will not be reflected in rust code.
+
+## Linking to external libraries
+
+Functions can call into prebuilt libraries through rust's FFI. Give the directories to search with `link_search`, and
+the libraries to link with `link_libs`. They're passed to rustc (as `-L` and `-l`) with `cargo rustc`, so they only
+affect the module's own crate, not its dependencies. The command is the first line of the module's `build.log`.
+
+```py
+@rust(py=False, link_search=["src/test"], link_libs=["static=static"])
+def fibonacci(n: Annotated[int, "u64"]) -> Annotated[int, "u64"]:
+    """
+    unsafe extern "C" {
+        fn fibonacci(n: u64) -> u64;
+    }
+    Ok(unsafe { fibonacci(n) })
+    """
+```
+
+Settings from every function in a module are combined, in the order the functions are defined: the linker searches
+paths, and resolves static libraries, in order.
+
+- **static libraries** are copied into the module, so nothing needs to be found at runtime. On linux and macOS they
+must be compiled as position-independent code (`-fPIC`), as the module is itself a shared library.
+- **shared libraries** must also be found by the loader when the module is imported. Add an rpath with
+`link_args=["-Wl,-rpath,<absolute dir>"]` (as in [test_external_shared.py](src/test/test_external_shared.py)), or use
+`LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH`. On windows, add the DLL's directory with `os.add_dll_directory` before the first call.
+
+The module's hash covers the link settings, but not the libraries themselves: after rebuilding a library, delete the
+module's folder in `ext/` to force a rebuild. (A shared library that keeps the same interface doesn't need this.)
 
 ## Configuration
 

@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import sys
 import warnings
@@ -372,9 +373,15 @@ def _build(
     logger.info(f"building {full_name}...")
     build_log = module_dir / "build.log"
 
+    # cargo rustc, not cargo build, as only it passes the link settings to the module's crate alone: RUSTFLAGS would
+    # also reach every dependency, and change their fingerprints in the target dir all modules share
+    command = ["cargo", "rustc", "--release", "--message-format=json"]
+    if rustc_args := module_spec.rustc_args():
+        command += ["--", *rustc_args]
+
     try:
         compile_result = subprocess.run(
-            ["cargo", "build", "--release", "--message-format=json"],
+            command,
             cwd=module_dir,
             check=False,
             capture_output=True,
@@ -392,7 +399,7 @@ def _build(
         ) from e
     all_diagnostics = _parse_cargo_messages(compile_result.stdout)
     build_log.write_text(
-        compile_result.stderr + "".join(d.rendered for d in all_diagnostics),
+        shlex.join(command) + "\n" + compile_result.stderr + "".join(d.rendered for d in all_diagnostics),
         encoding="utf-8",
     )
     if compile_result.returncode != 0:
@@ -483,6 +490,9 @@ def rust[**P, R](
     edition: str | None = None,
     help: str | None = None,
     constants: list[str] | None = None,
+    link_search: list[str | Path] | None = None,
+    link_libs: list[str] | None = None,
+    link_args: list[str] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator factory for compiling rust function implementations into extension modules.
@@ -538,6 +548,10 @@ def rust[**P, R](
             profile=profile or {},
             modules=[Path(m) for m in modules or []],
             constants=constant_defs,
+            # absolute, as rustc runs in the module folder, not the directory the paths are relative to
+            link_search=[Path(p).resolve() for p in link_search or []],
+            link_libs=link_libs or [],
+            link_args=link_args or [],
         )
 
         @wraps(func)
