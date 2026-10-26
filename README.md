@@ -92,7 +92,8 @@ rust type e.g. `Annotated[int | float, "f64"]`.
 [Linking to external libraries](#linking-to-external-libraries)).
 - xenoform-rs and its C++ sister, [xenoform](https://pypi.org/project/xenoform/), are broadly on a par. The main things
 xenoform has that xenoform-rs doesn't are compound types beyond `T | None` (via `std::variant`), auto-vectorisation (a
-pybind11 feature) and linking to other extension modules.
+pybind11 feature) and linking to other extension modules. Conversely, xenoform-rs maps `datetime`, `date`, `time`,
+`timedelta` and `tzinfo` to rust (jiff) types by default, which xenoform doesn't.
 
 ## Getting started
 
