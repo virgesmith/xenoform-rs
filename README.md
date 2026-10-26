@@ -90,8 +90,9 @@ Use a type override to a generic python type e.g. `Annotated[int | float, "&Boun
 rust type e.g. `Annotated[int | float, "f64"]`.
 - rebuilding an external library that a module links to doesn't trigger a rebuild of the module (see
 [Linking to external libraries](#linking-to-external-libraries)).
-- due to restrictions arising from linguistic differences, xenoform-rs will likely never be as functionally complete
-than its C++ sister, [xenoform](https://pypi.org/project/xenoform/)
+- xenoform-rs and its C++ sister, [xenoform](https://pypi.org/project/xenoform/), are broadly on a par. The main things
+xenoform has that xenoform-rs doesn't are compound types beyond `T | None` (via `std::variant`), auto-vectorisation (a
+pybind11 feature) and linking to other extension modules.
 
 ## Getting started
 
