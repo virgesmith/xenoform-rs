@@ -22,7 +22,7 @@ Entry template:
 
 ---
 
-## 2026-10-26 — Link to external static and shared libraries
+## 2026-10-26 — Link to external static and shared libraries (#43)
 
 **Why** — xenoform can link to prebuilt libraries (`extra_link_args`, see its `test_external_static.py` and
 `test_external_shared.py`); xenoform-rs couldn't, so calling existing C code meant going back through Python (e.g.
