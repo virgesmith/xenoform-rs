@@ -174,7 +174,7 @@ class ModuleSpec:
         # the generated source (hence the hash) must not
         module = _CARGO_TEMPLATE.format(
             version=version,
-            rustc_args=f"\n# rustc args, passed by cargo rustc: {shlex.join(rustc_args)}" if rustc_args else "",
+            rustc_args=f"\n# rustc args, passed by cargo rustc:\n# {shlex.join(rustc_args)}" if rustc_args else "",
             pyo3_version=get_config().pyo3_version,
             module_name=module_name,
             edition=self.edition or "2024",  # only default at the point when Cargo.toml is generated

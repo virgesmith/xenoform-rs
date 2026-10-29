@@ -42,7 +42,7 @@ def test_link_settings_are_recorded_in_cargo_toml() -> None:
         return ModuleSpec().add_function(_FUNCTION, link_libs=libs, link_args=args).make_source("m")[0]
 
     assert "# rustc args" not in cargo_toml_with([], [])
-    assert "# rustc args, passed by cargo rustc: -lstatic=foo '-Clink-arg=a b'\n" in cargo_toml_with(
+    assert "# rustc args, passed by cargo rustc:\n# -lstatic=foo '-Clink-arg=a b'\n" in cargo_toml_with(
         ["static=foo"], ["a b"]
     )
 
