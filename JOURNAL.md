@@ -32,8 +32,9 @@ ctypes) on every call.
 - New `@rust` parameters `link_search` (directories), `link_libs` (e.g. `"static=foo"`) and `link_args` (raw linker
   arguments, e.g. an rpath). They're passed to rustc as `-Lnative=`, `-l` and `-Clink-arg=`. Modules are now built
   with `cargo rustc` instead of `cargo build` (identical without args), which passes them after `--`.
-- The link settings are part of the module hash. They add nothing to it when there are none, so existing modules
-  aren't rebuilt.
+- The link settings are recorded in a comment at the top of the generated `Cargo.toml`, which makes them part of the
+  module hash. There's no comment when there are none, so existing modules aren't rebuilt. Link settings containing
+  control characters (other than tab) are rejected with `RustConfigError`.
 - The build command is the first line of `build.log`, so the args used can be checked.
 - `test_external_static.py` and `test_external_shared.py` mirror xenoform's, linking a C library (`test_lib.c`, built
   by the session fixture `build_libs` in the new `conftest.py`). `test_link_settings.py` covers the translation to
@@ -55,6 +56,17 @@ ctypes) on every call.
 - *Rejected: plain linker flags as in xenoform* (`-L`, `-l` as linker args). rustc's `-L`/`-l` are portable across
   toolchains (rustc translates them for MSVC) and keep rustc aware of the libraries linked. `link_args` remains for
   what has no rustc form, e.g. an rpath.
+- *Link settings in a `Cargo.toml` comment, not hashed separately.* As in xenoform, which writes its compile args
+  into the generated source: the hash is then of the generated files (plus `modules=` files, which were always
+  hashed separately), and the settings can be seen next to the rest of the build config, not only in `build.log`
+  once a build has run. Quoted with `shlex.join`, which is reversible, so `["a b"]` and `["a", "b"]` hash differently
+  (an earlier version separated them with `\0` in a separate hash update). `Cargo.toml`, not `lib.rs`, as it's where
+  build settings are looked for. Only the rustc args are recorded, not the full command, which `_build` owns and
+  `build.log` shows. Like the rest of the module folder, the comment describes the last build, which may be from
+  another interpreter's ABI (the trap the 2026-07-16 entry describes): no worse than `lib.rs`.
+- *Control characters rejected, not escaped.* TOML comments can't contain them (other than tab), and a line break
+  would end the comment and inject the rest as TOML. None has a use in a path, library name or linker arg, so
+  a clear error at decoration time beats an escaping scheme for a comment that only people read.
 - *`build = false` in the generated Cargo.toml.* No build.rs is ever generated, but cargo compiles and runs one it
   finds in the package folder, so a stray one in a module folder (e.g. left by hand) would silently run on every
   build. Changing the template rebuilds every module once, as a version bump does.
@@ -75,6 +87,9 @@ ctypes) on every call.
 - The external library tests are linux-only (as in xenoform): `build_libs` uses `cc`/`ar`, and the shared test relies
   on an rpath. macOS needs `.dylib` naming (and possibly install names); windows needs MSVC-built `.lib`/`.dll` and
   `os.add_dll_directory`.
+- Revisit if cargo's `profile-rustflags` is stabilized: `[profile.release.package.<name>] rustflags` would set the
+  link settings for the module's crate alone in the manifest itself, replacing both `cargo rustc` args and the
+  comment. Still unstable in cargo 1.99.0 (2026-08-27): stable cargo rejects the manifest.
 
 ## 2026-10-23 — pyo3 0.30; `NUMPY_CRATE`; version 0.2.0 (#42)
 

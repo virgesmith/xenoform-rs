@@ -700,7 +700,8 @@ subsequent mutation will not be reflected in rust code.
 
 Functions can call into prebuilt libraries through rust's FFI. Give the directories to search with `link_search`, and
 the libraries to link with `link_libs`. They're passed to rustc (as `-L` and `-l`) with `cargo rustc`, so they only
-affect the module's own crate, not its dependencies. The command is the first line of the module's `build.log`.
+affect the module's own crate, not its dependencies. They're recorded in a comment at the top of the module's
+`Cargo.toml`, and the full command is the first line of its `build.log`.
 
 ```py
 @rust(py=False, link_search=["src/test"], link_libs=["static=static"])

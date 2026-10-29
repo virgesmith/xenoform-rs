@@ -1,8 +1,11 @@
 import shlex
 from pathlib import Path
 
+import pytest
+
 from xenoform_rs.compile import _check_build_fetch_module_impl
 from xenoform_rs.config import get_config
+from xenoform_rs.errors import RustConfigError
 from xenoform_rs.rustmodule import FunctionSpec, ModuleSpec
 
 _FUNCTION = FunctionSpec(name="answer", py=False, body="() -> PyResult<i32> {Ok(42)}", arg_annotations="", scope=())
@@ -32,6 +35,34 @@ def test_link_settings_change_the_hash() -> None:
         return ModuleSpec().add_function(_FUNCTION, link_libs=libs).make_source("m")[2]
 
     assert len({hash_with([]), hash_with(["static=foo"]), hash_with(["static=bar"])}) == 3
+
+
+def test_link_settings_are_recorded_in_cargo_toml() -> None:
+    def cargo_toml_with(libs: list[str], args: list[str]) -> str:
+        return ModuleSpec().add_function(_FUNCTION, link_libs=libs, link_args=args).make_source("m")[0]
+
+    assert "# rustc args" not in cargo_toml_with([], [])
+    assert "# rustc args, passed by cargo rustc: -lstatic=foo '-Clink-arg=a b'\n" in cargo_toml_with(
+        ["static=foo"], ["a b"]
+    )
+
+
+def test_link_args_split_differently_hash_differently() -> None:
+    def hash_with(args: list[str]) -> str:
+        return ModuleSpec().add_function(_FUNCTION, link_args=args).make_source("m")[2]
+
+    assert hash_with(["a b"]) != hash_with(["a", "b"])
+
+
+@pytest.mark.parametrize("bad", ["a\nb", "a\rb", "a\x00b", "a\x7fb"])
+def test_link_settings_with_control_characters_are_rejected(bad: str) -> None:
+    # a line break would end the comment in Cargo.toml and inject the rest as TOML
+    with pytest.raises(RustConfigError, match="control character"):
+        ModuleSpec().add_function(_FUNCTION, link_args=[bad])
+
+
+def test_link_settings_may_contain_tabs() -> None:
+    ModuleSpec().add_function(_FUNCTION, link_search=[Path("/opt/my\tlib")])
 
 
 def test_link_settings_are_passed_to_rustc_and_logged(tmp_path: Path) -> None:

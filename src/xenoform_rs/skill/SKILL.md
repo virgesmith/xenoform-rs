@@ -266,7 +266,10 @@ For a module `my_module.py`, generated artifacts live under `ext/my_module_ext/`
 
 - `src/lib.rs` — the generated Rust source; read this to see exactly what Rust code was produced
   from your Python signature.
-- `build.log` — captured `cargo build` output.
+- `Cargo.toml` — the generated crate manifest. Any link settings are recorded in a comment at the
+  top, for reference only: stable cargo can't set them for one crate in the manifest, so they're
+  passed to `cargo rustc`.
+- `build.log` — the build command, then the captured cargo output.
 - `<abi-tag>.checksum` — the hash of the sources that interpreter's binary was built from. Deleting
   it (or the whole folder) forces a rebuild.
 
