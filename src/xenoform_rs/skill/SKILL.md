@@ -113,6 +113,9 @@ class Thing:
 | `profile` | `dict[str, str] \| None` | `None` | Overrides to the release Cargo profile, e.g. `{"strip": "symbols"}`. |
 | `edition` | `str` | `"2024"` | The Rust edition. |
 | `help` | `str \| None` | `None` | Docstring for the *Python* function (since the real docstring holds Rust code). |
+| `link_search` | `list[Path \| str] \| None` | `None` | Directories to search for external libraries (relative to the working directory). |
+| `link_libs` | `list[str] \| None` | `None` | External libraries to link, as rustc `-l` values, e.g. `"static=foo"`, `"dylib=foo"`. |
+| `link_args` | `list[str] \| None` | `None` | Raw linker arguments, e.g. `"-Wl,-rpath,/opt/foo/lib"` so a shared library is found at import. |
 | `constants` | `list[str] \| None` | `None` | Names of Python variables (local, class-body, module-level or imported) emitted as module-level `const` items with the same name, typed from the value (`int` → `i32`, `str` → `&str`). For another type write `"NAME: u64"`. An `Annotated` annotation on the Python variable is **ignored**, because it doesn't travel with an imported value. |
 
 ## Default Python → Rust type mapping
@@ -219,8 +222,11 @@ its reference stripped (you get `Bound<'py, T>` back, since you can't return a b
   `idx.tz_convert(None).as_unit("us").to_numpy()` (drop `tz_convert(None)` if naive) as
   `Annotated[npt.NDArray[np.datetime64], "PyReadonlyArray1<'py, Datetime<Microseconds>>"]`
   (imports `numpy::datetime::{Datetime, units::Microseconds}`), where `NaT` is `i64::MIN`.
-- **No linking to external prebuilt binaries.** Only source (the docstring plus any `modules=`
-  files) is compiled.
+- **External libraries are linked, not tracked.** Use `link_search`/`link_libs` (and
+  `link_args` for an rpath); declare the functions in an `unsafe extern "C" { ... }` block and call them
+  in `unsafe`. Rebuilding the library doesn't rebuild the module: delete its `ext/` folder. Static
+  libraries need `-fPIC`; a shared library needs an rpath (or `LD_LIBRARY_PATH`, or
+  `os.add_dll_directory` on windows) to be found at import.
 - **Extra `modules=` files are copied into the crate** — editing them triggers a rebuild just
   like editing the docstring does.
 
@@ -260,7 +266,10 @@ For a module `my_module.py`, generated artifacts live under `ext/my_module_ext/`
 
 - `src/lib.rs` — the generated Rust source; read this to see exactly what Rust code was produced
   from your Python signature.
-- `build.log` — captured `cargo build` output.
+- `Cargo.toml` — the generated crate manifest. Any link settings are recorded in a comment at the
+  top, for reference only: stable cargo can't set them for one crate in the manifest, so they're
+  passed to `cargo rustc`.
+- `build.log` — the build command, then the captured cargo output.
 - `<abi-tag>.checksum` — the hash of the sources that interpreter's binary was built from. Deleting
   it (or the whole folder) forces a rebuild.
 

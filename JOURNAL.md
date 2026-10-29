@@ -22,6 +22,75 @@ Entry template:
 
 ---
 
+## 2026-10-26 — Link to external static and shared libraries (#43)
+
+**Why** — xenoform can link to prebuilt libraries (`extra_link_args`, see its `test_external_static.py` and
+`test_external_shared.py`); xenoform-rs couldn't, so calling existing C code meant going back through Python (e.g.
+ctypes) on every call.
+
+**What**
+- New `@rust` parameters `link_search` (directories), `link_libs` (e.g. `"static=foo"`) and `link_args` (raw linker
+  arguments, e.g. an rpath). They're passed to rustc as `-Lnative=`, `-l` and `-Clink-arg=`. Modules are now built
+  with `cargo rustc` instead of `cargo build` (identical without args), which passes them after `--`.
+- The link settings are recorded in a comment at the top of the generated `Cargo.toml`, which makes them part of the
+  module hash. There's no comment when there are none, so existing modules aren't rebuilt. Link settings containing
+  control characters (other than tab) are rejected with `RustConfigError`.
+- The build command is the first line of `build.log`, so the args used can be checked.
+- `test_external_static.py` and `test_external_shared.py` mirror xenoform's, linking a C library (`test_lib.c`, built
+  by the session fixture `build_libs` in the new `conftest.py`). `test_link_settings.py` covers the translation to
+  rustc args, ordering, hashing and the command on every platform.
+
+**Design decisions**
+- *`cargo rustc` args, not `RUSTFLAGS`.* All modules share one target dir, and RUSTFLAGS reaches every crate and is in
+  its fingerprint: modules with different link flags would keep rebuilding pyo3 and every other dependency for each
+  other. `cargo rustc` passes args to the final crate only (checked: dependencies stay fresh).
+- *`cargo rustc`, not a generated build.rs.* Both reach only the module's crate. Two build.rs versions were tried on
+  this branch (these three parameters, then a single list of cargo build script instructions); a build.rs needs a
+  generated file, a Cargo.toml `build` key and raw string escaping, all to make cargo pass flags to rustc that
+  `cargo rustc` passes directly. Its output is also hidden from build.log (cargo keeps build script output to itself).
+- *Three structured parameters, not one list of raw args.* Also tried: a single `rustc_args`
+  (`[f"-Lnative={Path('lib').resolve()}", "-lstatic=foo"]`), and cargo build script instructions. Both are smaller APIs
+  and allow anything rustc (or cargo) does, but read worse, and every caller has to resolve paths. Structured, a call
+  reads like xenoform's, and `link_search` is resolved relative to the working directory, like `modules=` (rustc runs
+  in the module folder, which is why xenoform's tests need `../../src/test`).
+- *Rejected: plain linker flags as in xenoform* (`-L`, `-l` as linker args). rustc's `-L`/`-l` are portable across
+  toolchains (rustc translates them for MSVC) and keep rustc aware of the libraries linked. `link_args` remains for
+  what has no rustc form, e.g. an rpath.
+- *Link settings in a `Cargo.toml` comment, not hashed separately.* As in xenoform, which writes its compile args
+  into the generated source: the hash is then of the generated files (plus `modules=` files, which were always
+  hashed separately), and the settings can be seen next to the rest of the build config, not only in `build.log`
+  once a build has run. Quoted with `shlex.join`, which is reversible, so `["a b"]` and `["a", "b"]` hash differently
+  (an earlier version separated them with `\0` in a separate hash update). `Cargo.toml`, not `lib.rs`, as it's where
+  build settings are looked for. Only the rustc args are recorded, not the full command, which `_build` owns and
+  `build.log` shows. Like the rest of the module folder, the comment describes the last build, which may be from
+  another interpreter's ABI (the trap the 2026-07-16 entry describes): no worse than `lib.rs`.
+- *Control characters rejected, not escaped.* TOML comments can't contain them (other than tab), and a line break
+  would end the comment and inject the rest as TOML. None has a use in a path, library name or linker arg, so
+  a clear error at decoration time beats an escaping scheme for a comment that only people read.
+- *`build = false` in the generated Cargo.toml.* No build.rs is ever generated, but cargo compiles and runs one it
+  finds in the package folder, so a stray one in a module folder (e.g. left by hand) would silently run on every
+  build. Changing the template rebuilds every module once, as a version bump does.
+- *Always `cargo rustc`, not only when there are link settings*: one code path. It requires a single target, which the
+  generated crate has (its lib).
+- *Ordered and de-duplicated, not sets.* Every other `ModuleSpec` collection is a set sorted for a stable hash, but
+  the linker searches paths, and resolves static libraries, in the order given. Function registration order is
+  deterministic, so the hash is still stable.
+- *`link_search` is always `native=`.* Other kinds (`framework=` on macOS) aren't supported.
+- *C, not C++, for the test library*: rust calls it through `extern "C"`, so mangled names would only get in the way.
+  Rejected: building it with `rustc --crate-type=staticlib` to avoid needing a C compiler, as a rust staticlib linked
+  into a rust cdylib can clash on std symbols.
+
+**Follow-ups**
+- The libraries themselves aren't hashed: rebuilding a static library doesn't rebuild the module, as the checksum
+  check returns before cargo runs. Hashing them means finding them by platform-specific names in the search paths.
+  Documented in the README and SKILL.
+- The external library tests are linux-only (as in xenoform): `build_libs` uses `cc`/`ar`, and the shared test relies
+  on an rpath. macOS needs `.dylib` naming (and possibly install names); windows needs MSVC-built `.lib`/`.dll` and
+  `os.add_dll_directory`.
+- Revisit if cargo's `profile-rustflags` is stabilized: `[profile.release.package.<name>] rustflags` would set the
+  link settings for the module's crate alone in the manifest itself, replacing both `cargo rustc` args and the
+  comment. Still unstable in cargo 1.99.0 (2026-08-27): stable cargo rejects the manifest.
+
 ## 2026-10-23 — pyo3 0.30; `NUMPY_CRATE`; version 0.2.0 (#42)
 
 **Why** — pyo3 0.30 is out. The numpy crate has to move with it: cargo can't link two pyo3 versions into one module,
